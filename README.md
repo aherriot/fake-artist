@@ -130,6 +130,28 @@ Push to a repo, import into Vercel, set the env vars from `.env.example`
 `vercel.json` registers the daily cleanup job. Cron requires a Pro plan for
 sub-daily schedules; daily works on Hobby.
 
+## When things break
+
+Failure is a first-class state here, not an afterthought. Every path ends in a
+plain-language message and a next action.
+
+| Failure | What the user sees |
+|---|---|
+| Component throws | `app/error.tsx` — "Something went wrong", Try again / Reload / Home |
+| Root layout throws | `app/global-error.tsx` — dependency-free last resort |
+| Stale bundle after deploy | "A new version is available" + Reload (`reset()` cannot fix a missing chunk) |
+| Bad game code | "No game with that code", plus the code alphabet as a hint |
+| Network blip loading a game | Retried twice with backoff, then Try again |
+| Unknown URL | `app/not-found.tsx` |
+| API throws | `apiHandler` returns JSON + a `requestId` echoed in the UI and the server log |
+| Pusher down or unconfigured | Silently degrades to 2s polling; the game stays playable |
+| Legacy/partial game row | `normalizeGameState` fills defaults instead of crashing a render |
+
+Two rules the code enforces: the client never calls `JSON.parse` on an
+unchecked body (`lib/fetch-json.ts` cannot throw), and no route can return an
+empty body (`lib/api.ts` wraps every handler). Together they make
+"unexpected end of data" unreachable.
+
 ## Verification
 
 `npm test` covers the pure reducer. The rest is manual — open two browsers, one
@@ -154,6 +176,9 @@ normal and one incognito, so they get distinct cookies.
 - [ ] 9. Have someone on another continent join → confirm playable latency
 - [ ] 10. `curl -H "Authorization: Bearer $CRON_SECRET" $URL/api/cron/cleanup`
          then check `/debug` — stale games gone, active ones untouched
+- [ ] 11. Visit `/game/ZZZZZZ` → "No game with that code", not a crash
+- [ ] 12. Stop the dev server mid-game → the tab reports a reachable error with
+         Try again, and recovers on its own once the server is back
 
 The `/debug` page lists every game with its status, player count, `lastSeq`, and
 idle time, refreshing every 3s. The in-game debug strip shows connection state,

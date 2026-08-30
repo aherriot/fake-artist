@@ -10,6 +10,7 @@ import type {
   PrivateState,
   Snapshot,
 } from "@/lib/game/types";
+import { normalizeGameState } from "@/lib/game/types";
 
 // Next.js requires these to be literal exports in the route file itself --
 // re-exporting them from a shared module is silently ignored.
@@ -72,7 +73,7 @@ async function getHandler(_req: Request, { params }: { params: Promise<{ code: s
     // `committed` is DERIVED, not stored: persisting it would mean writing the
     // shared games row on every commit, which is exactly the contention the
     // player_state split removes.
-    state: { ...game.state, committed: committed.rows.map((r) => r.player_id) },
+    state: { ...normalizeGameState(game.state), committed: committed.rows.map((r) => r.player_id) },
     lastSeq: Number(game.last_seq ?? 0),
     players: p.rows as PlayerInfo[],
     hostId: game.host_id,

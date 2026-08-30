@@ -3,13 +3,15 @@
 import { use, useCallback, useEffect, useState } from "react";
 import GameView from "./GameView";
 import { fetchJson } from "@/lib/fetch-json";
+import { ErrorPanel } from "@/lib/ui/ErrorPanel";
 import type { Snapshot } from "@/lib/game/types";
 
 type Gate =
   | { kind: "checking" }
   | { kind: "member" }
   | { kind: "stranger"; status: Snapshot["status"]; players: number }
-  | { kind: "error"; message: string };
+  | { kind: "missing" }
+  | { kind: "error"; message: string; requestId?: string };
 
 /**
  * Membership gate for /game/[code].
@@ -31,10 +33,20 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
   const [busy, setBusy] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
 
-  const check = useCallback(async () => {
+  const check = useCallback(async (attempt = 0): Promise<void> => {
     const res = await fetchJson<Snapshot>(`/api/games/${upper}/state`);
     if (!res.ok) {
-      setGate({ kind: "error", message: res.error });
+      // A bad code is a dead end; a network blip is not. Only the latter is
+      // worth retrying, and doing it silently spares the user a button press.
+      if (res.status === 404) {
+        setGate({ kind: "missing" });
+        return;
+      }
+      if (attempt < 2) {
+        await new Promise((r) => setTimeout(r, 400 * 2 ** attempt));
+        return check(attempt + 1);
+      }
+      setGate({ kind: "error", message: res.error, requestId: res.requestId });
       return;
     }
     setGate(
@@ -45,6 +57,11 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
   }, [upper]);
 
   useEffect(() => {
+    void check();
+  }, [check]);
+
+  const retry = useCallback(() => {
+    setGate({ kind: "checking" });
     void check();
   }, [check]);
 
@@ -66,14 +83,32 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
 
   if (gate.kind === "checking") return <main>Loading {upper}...</main>;
 
+  if (gate.kind === "missing") {
+    return (
+      <ErrorPanel
+        title="No game with that code"
+        message={`We could not find a game called ${upper}. It may have finished and been cleaned up, or the code may have a typo.`}
+        hint="Codes are 6 characters and never use the letters O or I, or the digits 0 or 1."
+        actions={[
+          { label: "Start a new game", primary: true, href: "/" },
+          { label: "Try again", onClick: retry },
+        ]}
+      />
+    );
+  }
+
   if (gate.kind === "error") {
     return (
-      <main>
-        <h1>{gate.message}</h1>
-        <a href="/" style={{ color: "#6af" }}>
-          Back
-        </a>
-      </main>
+      <ErrorPanel
+        title="Could not load the game"
+        message={gate.message}
+        hint="This is usually temporary. Your game is safe -- all state is stored server-side."
+        actions={[
+          { label: "Try again", primary: true, onClick: retry },
+          { label: "Go home", href: "/" },
+        ]}
+        reference={gate.requestId}
+      />
     );
   }
 

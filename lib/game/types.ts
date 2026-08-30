@@ -42,6 +42,26 @@ export function initialGameState(): GameState {
   return { tiles: {}, scores: {}, round: 0, committed: [], startedAt: null, endedAt: null };
 }
 
+/**
+ * Coerce whatever is in the database into a valid GameState.
+ *
+ * Cheap insurance: a game row written by an older build (or a field added
+ * since) must degrade to a default, never surface as `undefined.length` in
+ * a render and take the page down. Applied on every read.
+ */
+export function normalizeGameState(raw: Partial<GameState> | null | undefined): GameState {
+  const base = initialGameState();
+  if (!raw || typeof raw !== "object") return base;
+  return {
+    tiles: raw.tiles && typeof raw.tiles === "object" ? raw.tiles : base.tiles,
+    scores: raw.scores && typeof raw.scores === "object" ? raw.scores : base.scores,
+    round: typeof raw.round === "number" ? raw.round : base.round,
+    committed: Array.isArray(raw.committed) ? raw.committed : base.committed,
+    startedAt: typeof raw.startedAt === "string" ? raw.startedAt : null,
+    endedAt: typeof raw.endedAt === "string" ? raw.endedAt : null,
+  };
+}
+
 export interface PlayerInfo {
   id: string;
   nickname: string;

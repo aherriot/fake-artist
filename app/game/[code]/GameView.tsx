@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useGameSync } from "@/lib/useGameSync";
+import { ErrorPanel } from "@/lib/ui/ErrorPanel";
 import { GRID_SIZE, ROUNDS, TILE_COUNT } from "@/lib/game/types";
 
 const COLORS = ["#e05", "#0a8", "#58f", "#fa0", "#a5f", "#5fa"];
@@ -57,10 +58,16 @@ export default function GameView({ code }: { code: string }) {
 
   if (sync.error && !sync.ready) {
     return (
-      <main>
-        <h1>{sync.error}</h1>
-        <a href="/" style={{ color: "#6af" }}>Back</a>
-      </main>
+      <ErrorPanel
+        title="Could not load the game"
+        message={sync.error}
+        hint="Your progress is safe -- the game lives in the database, not in this tab."
+        actions={[
+          { label: "Try again", primary: true, onClick: forceResync },
+          { label: "Reload page", onClick: () => window.location.reload() },
+          { label: "Go home", href: "/" },
+        ]}
+      />
     );
   }
   if (!sync.ready) return <main>Loading {code.toUpperCase()}...</main>;

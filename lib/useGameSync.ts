@@ -12,6 +12,7 @@ import {
   type GameStatus,
   type PlayerInfo,
   type PrivateState,
+  normalizeGameState,
   type Snapshot,
 } from "./game/types";
 
@@ -172,7 +173,7 @@ export function useGameSync(code: string) {
     setSync((p) => ({
       ...p,
       status: snap.status,
-      state: snap.state,
+      state: normalizeGameState(snap.state),
       players: snap.players,
       lastSeq: snap.lastSeq,
       hostId: snap.hostId,
