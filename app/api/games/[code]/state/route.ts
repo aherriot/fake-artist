@@ -77,6 +77,7 @@ async function getHandler(_req: Request, { params }: { params: Promise<{ code: s
     players: p.rows as PlayerInfo[],
     hostId: game.host_id,
     you: playerId,
+    isPlayer: p.rows.some((r) => r.id === playerId),
     privateState: priv.rows[0]?.data ?? null,
   };
   return NextResponse.json(snapshot);

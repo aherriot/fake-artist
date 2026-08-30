@@ -104,6 +104,10 @@ export interface Snapshot {
   players: PlayerInfo[];
   hostId: string;
   you: string;
+  /** Whether the requester has actually joined. False for someone who just
+   *  followed a shared link -- the client uses this to prompt for a nickname
+   *  instead of trying to subscribe to a channel it cannot authorise for. */
+  isPlayer: boolean;
   /** ONLY the requesting player's private state. Never anyone else's. */
   privateState: PrivateState | null;
 }

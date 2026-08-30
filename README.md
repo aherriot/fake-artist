@@ -139,6 +139,9 @@ normal and one incognito, so they get distinct cookies.
 - [ ] 2. Start the game as host; non-host sees the board activate
 - [ ] 3. Both players commit a pick → round resolves, both boards converge
 - [ ] 4. **Reload B** mid-game → same state, chat history intact, still live
+- [ ] 4b. **Shared link:** paste `/game/CODE` into a third browser → it prompts
+        for a nickname, joins, and appears in A's roster. After the game starts,
+        a new browser is told it cannot join rather than being asked to type
 - [ ] 5. DevTools → Network → Offline on B for 20s, act in A, go back online →
         B's `resyncs` counter ticks and it catches up (this is the money test)
 - [ ] 6. Click "force resync" → `lastSeq` drops to 0 and rebuilds to match A
@@ -210,6 +213,7 @@ lib/game/commit.ts   PRIVATE writes: own row only, resolves round atomically
 lib/useGameSync.ts   client sync loop: buffer → snapshot → drain → gap-detect
 lib/db/index.ts      HTTP driver for reads, pooled driver for write transactions
 lib/session.ts       signed-cookie player identity
+app/game/[code]/     page.tsx = membership gate, GameView.tsx = the live game
 app/api/…            create, join, state, events, action, commit, chat, auth, cron
 ```
 
