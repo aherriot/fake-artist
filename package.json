@@ -8,12 +8,16 @@
     "start": "next start",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "test": "bash scripts/test.sh"
+    "test": "bash scripts/test.sh",
+    "test:integration": "bash scripts/integration.sh",
+    "test:all": "npm test && npm run test:integration"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.1",
+    "@types/pg": "^8.23.1",
     "drizzle-orm": "^0.44.5",
     "next": "^15.5.4",
+    "pg": "^8.23.0",
     "pusher": "^5.2.0",
     "pusher-js": "^8.4.0",
     "react": "^19.1.1",

@@ -1,6 +1,8 @@
 import { neon, Pool, neonConfig } from "@neondatabase/serverless";
 import { drizzle as drizzleHttp } from "drizzle-orm/neon-http";
 import { drizzle as drizzleServerless } from "drizzle-orm/neon-serverless";
+import { drizzle as drizzleNodePg } from "drizzle-orm/node-postgres";
+import pg from "pg";
 import * as schema from "./schema";
 
 /**
@@ -65,13 +67,28 @@ function lazy<T extends object>(make: () => T): T {
 }
 
 /**
+ * Neon in production; plain Postgres anywhere else.
+ *
+ * The Neon drivers speak to Neon's proxy and cannot reach an ordinary
+ * Postgres, which made the real routes untestable without hitting the live
+ * database. Selecting on the host lets the integration suite run the actual
+ * handlers against a throwaway local cluster.
+ */
+const isNeon = (u: string) => /neon\.tech|neon\.build/.test(u);
+
+/**
  * READS. One-shot HTTP query; holds no connection.
  *
  * This is what survives autoscaling: N concurrent instances serving snapshot
  * and event reads consume zero Postgres backends. Cannot run multi-statement
  * transactions -- use `dbTx` for those.
  */
-export const db = lazy(() => drizzleHttp(neon(url()), { schema }));
+export const db = lazy(() => {
+  const u = url();
+  return isNeon(u)
+    ? drizzleHttp(neon(u), { schema })
+    : drizzleNodePg(new pg.Pool({ connectionString: u, max: 4 }), { schema });
+});
 
 /**
  * WRITES. Pooled connection, used only inside transactions.
@@ -82,6 +99,11 @@ export const db = lazy(() => drizzleHttp(neon(url()), { schema }));
  */
 export const dbTx = lazy(() => {
   const u = url();
+  if (!isNeon(u)) {
+    const local = new pg.Pool({ connectionString: u, max: 4 });
+    local.on("error", (err) => console.error("[db] local pool error:", err.message));
+    return drizzleNodePg(local, { schema });
+  }
   warnIfUnpooled(u);
   const pool = new Pool({ connectionString: u, max: 1 });
   // WITHOUT this, an idle client dropping its connection emits an unhandled

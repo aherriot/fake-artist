@@ -42,7 +42,10 @@ export const games = pgTable(
 export const players = pgTable(
   "players",
   {
-    id: uuid("id").primaryKey(), // equals the playerId in the signed cookie
+    // The cookie's player id. NOT unique on its own: the same browser can
+    // create or join any number of games over time, so identity here is
+    // (game_id, id) -- the same shape player_state already uses.
+    id: uuid("id").notNull(),
     gameId: uuid("game_id")
       .notNull()
       .references(() => games.id, { onDelete: "cascade" }),
@@ -53,6 +56,7 @@ export const players = pgTable(
       .defaultNow(),
   },
   (t) => [
+    primaryKey({ columns: [t.gameId, t.id] }),
     index("players_game_id_idx").on(t.gameId),
     uniqueIndex("players_game_seat_idx").on(t.gameId, t.seat),
   ],

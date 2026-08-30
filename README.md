@@ -154,6 +154,26 @@ empty body (`lib/api.ts` wraps every handler). Together they make
 
 ## Verification
 
+```bash
+npm test              # pure reducer invariants (fast, no database)
+npm run test:integration   # real HTTP against the real handlers
+npm run test:all
+```
+
+`test:integration` boots a throwaway Postgres and the real Next server, runs
+23 HTTP scenarios against the actual route handlers, then tears both down. No
+Neon account and no network required -- `lib/db/index.ts` selects the Neon
+drivers only for Neon hosts and plain `pg` otherwise, which is what makes the
+real code path testable locally.
+
+It deliberately runs with **no Pusher credentials**, so the polling fallback is
+exercised on every run rather than only in production incidents.
+
+> Added after a schema bug reached the user: `players.id` was the primary key,
+> so one browser could only ever be in one game. The unit tests missed it
+> because they used a fresh cookie per player. Every scenario here uses cookie
+> jars that persist across games, the way a browser does.
+
 `npm test` covers the pure reducer. The rest is manual — open two browsers, one
 normal and one incognito, so they get distinct cookies.
 
