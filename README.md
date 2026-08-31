@@ -21,6 +21,55 @@ internals *are* the interface.
 | Secrets stay secret | Private state in per-player rows, never in the event log |
 | Simultaneous commits don't contend | Each player writes only their own row |
 
+## Rules of the placeholder game
+
+Not RoboRally, and it shares none of its rules. It exists to stress the
+mechanics the real game needs -- simultaneous secret commits, deterministic
+resolution, and concurrent writes from every player at once.
+
+**Setup.** 2-6 players. The board is a 5x5 grid of tiles numbered 0-24, all
+unclaimed. The host is seat 0, then join order. On start each player is
+secretly dealt a hand of 5 distinct tile numbers drawn at random from 0-24.
+
+**Each round** (5 rounds, one per card):
+1. Every player secretly picks one tile from their own hand.
+2. Others see only that you have *committed*, never what you picked.
+3. Once all players have committed, the round resolves at once.
+
+**Resolution.** Picks are revealed simultaneously and applied in **seat order**:
+an unclaimed tile is taken for +1 point; an already-claimed one fails for
+nothing. Either way the card is spent. Ties go to the lower seat, never to
+whoever clicked first, so latency cannot influence the outcome and the result
+is reproducible from the event log.
+
+**Ending.** After 5 rounds, or when all 25 tiles are claimed. Highest score wins.
+
+### Hands overlap on purpose
+
+`dealHand()` runs per player against no shared deck, so the same tile can sit
+in several hands at once. That is what keeps the seat-order tiebreak exercised
+on most runs instead of rarely:
+
+| players | some tile contested | wasted picks/game | most-wanted tile held by |
+|---|---|---|---|
+| 2 | 71.0% | 1.0 | 1.7 players |
+| 3 | 98.4% | 2.8 | 2.2 players |
+| 4 | 100% | 5.2 | 2.6 players |
+| 6 | 100% | 11.6 | 3.4 players |
+
+Good for a load generator, bad for a game: at 6 players a third of all picks
+are wasted, and because claimed tiles stay claimed a card can go *dead* --
+guaranteed worthless, still forced to be spent, with no way to see it coming.
+Outcomes are largely decided by the deal and your seat rather than by any
+decision. If this ever needed to be a real game the fixes are easy (deal from
+one shared deck, or return a failed pick to hand), and none of them touch the
+sync layer.
+
+### Not implemented
+
+- **No turn timer.** A player who never commits stalls the round forever.
+- **No winner announcement** beyond the scoreboard; status just flips to `complete`.
+
 ## The core idea
 
 **Neon is the source of truth. Pusher is only a notification hint.**
