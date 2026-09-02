@@ -140,8 +140,18 @@ inline `var(--color-pen-N)`. Without it every stroke renders invisible.
    200k msgs/day).
 3. `cp .env.example .env.local` and fill it in. Secrets:
    `openssl rand -base64 32`.
-4. `npm install && npm run db:push`
+4. `npm install && npm run db:push`  ← **required; the app cannot create its
+   own tables**
 5. `npm run dev`
+
+`npm run dev` and `npm run build` run a preflight that checks the schema and
+tells you to run `db:push` if it is missing. Without that check an empty
+database produces a raw Postgres error on the very first click, and nothing
+anywhere says why.
+
+> The integration suite cannot catch a missing schema: its harness applies the
+> schema to a throwaway database on every run, so the state of your real
+> database is invisible to it. That is what the preflight is for.
 
 > Use a **separate** Neon database and Pusher app from any other project —
 > the table names are generic and two apps pointed at one database will

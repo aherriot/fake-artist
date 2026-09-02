@@ -23,6 +23,13 @@ function classify(err: unknown): { status: number; message: string } {
     return { status: 503, message: "Database connection transport failed." };
   if (/duplicate key/i.test(msg))
     return { status: 409, message: "Conflict, please retry." };
+  // Postgres 42P01. Nearly always a database that has never had the schema
+  // applied, which is otherwise a baffling 500 on the very first click.
+  if (/relation .* does not exist/i.test(msg))
+    return {
+      status: 503,
+      message: "The database has no schema. Run `npm run db:push`.",
+    };
 
   return { status: 500, message: "Internal server error." };
 }

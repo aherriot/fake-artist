@@ -10,7 +10,9 @@
     "db:studio": "drizzle-kit studio",
     "test": "bash scripts/test.sh",
     "test:integration": "bash scripts/integration.sh",
-    "test:all": "npm test && npm run test:integration"
+    "test:all": "npm test && npm run test:integration",
+    "predev": "node scripts/preflight.mjs",
+    "prebuild": "node scripts/preflight.mjs"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.10",
