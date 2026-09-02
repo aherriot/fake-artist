@@ -13,7 +13,9 @@ const COLORS = ["#e05", "#0a8", "#58f", "#fa0", "#a5f", "#5fa", "#f85", "#8f5", 
  * snapshot -- and a non-member cannot authorise that subscription.
  */
 export default function GameView({ code }: { code: string }) {
-  const { sync, forceResync } = useGameSync(code.toUpperCase());
+  const { sync, forceResync, sendChat, retryChat, discardChat } = useGameSync(
+    code.toUpperCase(),
+  );
   const [text, setText] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -30,15 +32,12 @@ export default function GameView({ code }: { code: string }) {
     }
   }
 
-  async function send() {
+  function send() {
     const msg = text.trim();
     if (!msg) return;
+    // Clear the box immediately -- the message is already on screen.
     setText("");
-    await fetch(`/api/games/${code.toUpperCase()}/chat`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text: msg }),
-    });
+    void sendChat(msg);
   }
 
   if (sync.error && !sync.ready) {
@@ -135,12 +134,30 @@ export default function GameView({ code }: { code: string }) {
       <section style={{ marginTop: 32 }}>
         <h2 style={h2}>Chat</h2>
         <div style={chatBox}>
-          {sync.chat.length === 0 && <p style={{ color: "#666" }}>No messages yet.</p>}
+          {sync.chat.length === 0 && sync.pending.chat.length === 0 && (
+            <p style={{ color: "#666" }}>No messages yet.</p>
+          )}
           {sync.chat.map((m, i) => (
             <div key={i}>
               <span style={{ color: colorOf(m.playerId) }}>{m.nickname}</span>
               <span style={{ color: "#888" }}>: </span>
               {m.text}
+            </div>
+          ))}
+          {/* Unconfirmed messages: shown at once, but visibly provisional so
+              nobody assumes a failed send was delivered. */}
+          {sync.pending.chat.map((m) => (
+            <div key={m.nonce} style={{ opacity: m.failed ? 1 : 0.55 }}>
+              <span style={{ color: colorOf(m.playerId) }}>{m.nickname}</span>
+              <span style={{ color: "#888" }}>: </span>
+              {m.text}
+              {m.failed && (
+                <span style={{ marginLeft: 8, color: "#ff5c5c", fontSize: 12 }}>
+                  not sent
+                  <button onClick={() => retryChat(m.nonce)} style={linkBtn}>retry</button>
+                  <button onClick={() => discardChat(m.nonce)} style={linkBtn}>discard</button>
+                </span>
+              )}
             </div>
           ))}
         </div>
@@ -185,6 +202,12 @@ const debugStrip: React.CSSProperties = {
 const miniBtn: React.CSSProperties = {
   padding: "4px 10px", fontFamily: "inherit", fontSize: 13, cursor: "pointer",
   background: "#222", color: "#eee", border: "1px solid #555",
+};
+
+const linkBtn: React.CSSProperties = {
+  marginLeft: 8, background: "none", border: "none", color: "#6af",
+  cursor: "pointer", fontFamily: "inherit", fontSize: 12, textDecoration: "underline",
+  padding: 0,
 };
 
 const chatBox: React.CSSProperties = {

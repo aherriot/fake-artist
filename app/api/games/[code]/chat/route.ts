@@ -26,7 +26,10 @@ async function postHandler(req: Request, { params }: { params: Promise<{ code: s
   const playerId = await getPlayerId();
   if (!playerId) return NextResponse.json({ error: "No session" }, { status: 401 });
 
-  const { text } = (await req.json().catch(() => ({}))) as { text?: string };
+  const { text, nonce } = (await req.json().catch(() => ({}))) as {
+    text?: string;
+    nonce?: string;
+  };
   const msg = (text ?? "").trim().slice(0, 500);
   if (!msg) return NextResponse.json({ error: "Empty message" }, { status: 400 });
 
@@ -48,6 +51,8 @@ async function postHandler(req: Request, { params }: { params: Promise<{ code: s
             nickname: p.rows[0].nickname,
             text: msg,
             at: new Date().toISOString(),
+            // Echoed so the sender can match this against its optimistic copy.
+            ...(typeof nonce === "string" && nonce.length <= 64 ? { nonce } : {}),
           },
         }],
       },

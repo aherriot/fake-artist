@@ -194,4 +194,55 @@ assert.deepStrictEqual(normalizeGameState({ strokes: "bad", scores: [] }).stroke
 assert.strictEqual(normalizeGameState({ round: "x" }).round, 0);
 ok("legacy or partial state normalises to defaults");
 
+
+// --- optimistic reconciliation ---------------------------------------------
+const { emptyPending, reconcile, isReady, hasVoted, clearForNewRound, mergedStrokes } =
+  await import("../.test-build/optimistic.js");
+
+const you = "a";
+const chatEv = (nonce) => ({
+  seq: 1, type: "chat",
+  payload: { playerId: you, nickname: "A", text: "hi", at: "t", nonce },
+});
+let pend = { ...emptyPending(), chat: [{ nonce: "n1", playerId: you, nickname: "A", text: "hi", at: "t" }] };
+
+// The prediction is retired by the ARRIVAL of the real event, not by a timer.
+assert.strictEqual(reconcile(pend, initialGameState(), you, []).chat.length, 1, "held until confirmed");
+assert.strictEqual(reconcile(pend, initialGameState(), you, [chatEv("n1")]).chat.length, 0, "retired on arrival");
+assert.strictEqual(reconcile(pend, initialGameState(), you, [chatEv("other")]).chat.length, 1, "someone else's message does not retire ours");
+ok("optimistic chat is retired only by its own confirmation");
+
+// A failed send is kept so the user can retry rather than silently losing it.
+const failed = { ...pend, chat: [{ ...pend.chat[0], failed: true }] };
+assert.strictEqual(reconcile(failed, initialGameState(), you, [chatEv("n1")]).chat.length, 1, "failed messages survive");
+ok("a failed message is never silently dropped");
+
+// Readiness and voting clear once public state shows them.
+let p2 = { ...emptyPending(), ready: true, voted: true };
+const st2 = { ...initialGameState(), ready: [you], voted: [you] };
+assert.strictEqual(reconcile(p2, st2, you, []).ready, false);
+assert.strictEqual(reconcile(p2, st2, you, []).voted, false);
+assert.strictEqual(isReady(initialGameState(), p2, you), true, "prediction shows before confirmation");
+assert.strictEqual(hasVoted(st2, emptyPending(), you), true, "confirmation shows without prediction");
+ok("readiness and voting merge prediction with confirmation");
+
+// One confirmed stroke of ours retires exactly one prediction.
+const mine = { playerId: you, seat: 0, points: [[0,0],[1,1]] };
+let p3 = { ...emptyPending(), strokes: [mine, mine] };
+const st3 = { ...initialGameState(), strokes: [{ ...mine }] };
+assert.strictEqual(reconcile(p3, st3, you, []).strokes.length, 1, "one confirmed retires one");
+assert.strictEqual(mergedStrokes(st3, p3).length, 3, "view shows confirmed + pending");
+const st4 = { ...initialGameState(), strokes: [{ ...mine }, { ...mine }, { playerId: "b", seat: 1, points: [] }] };
+assert.strictEqual(reconcile(p3, st4, you, []).strokes.length, 0, "others' strokes do not retire ours");
+ok("stroke predictions retire one-for-one against your own confirmed strokes");
+
+// A new round invalidates per-round predictions but not chat.
+const p5 = { chat: [{ nonce: "x", playerId: you, nickname: "A", text: "t", at: "t" }], strokes: [mine], ready: true, voted: true };
+const cleared = clearForNewRound(p5);
+assert.strictEqual(cleared.strokes.length, 0);
+assert.strictEqual(cleared.ready, false);
+assert.strictEqual(cleared.voted, false);
+assert.strictEqual(cleared.chat.length, 1, "chat spans rounds");
+ok("a new round clears per-round predictions but keeps chat");
+
 console.log(`\nAll ${n} state-machine invariants hold.`);

@@ -199,7 +199,16 @@ export type GameEvent =
   | {
       seq: number;
       type: "chat";
-      payload: { playerId: string; nickname: string; text: string; at: string };
+      payload: {
+        playerId: string;
+        nickname: string;
+        text: string;
+        at: string;
+        /** Client-generated id, echoed back so the sender can retire the
+         *  optimistic copy it already rendered. Public and meaningless to
+         *  anyone else. */
+        nonce?: string;
+      };
     };
 
 export type GameEventType = GameEvent["type"];

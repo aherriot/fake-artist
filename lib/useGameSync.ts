@@ -4,6 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Channel, PresenceChannel } from "pusher-js";
 import { getPusher, EVENT_NAME, channelFor } from "./pusher-client";
 import { fetchJson } from "./fetch-json";
+import {
+  clearForNewRound,
+  emptyPending,
+  reconcile,
+  type Pending,
+  type PendingChat,
+} from "./game/optimistic";
 import { reduce } from "./game/reduce";
 import {
   initialGameState,
@@ -34,6 +41,9 @@ export interface SyncState {
   error: string | null;
   /** Incremented whenever a gap forced a repair -- surfaced on the debug strip. */
   resyncs: number;
+  /** Local predictions, not yet confirmed by the server. Kept separate from
+   *  `state` so a gap-heal can never mistake one for a fact. */
+  pending: Pending;
 }
 
 const EMPTY: SyncState = {
@@ -50,6 +60,7 @@ const EMPTY: SyncState = {
   ready: false,
   error: null,
   resyncs: 0,
+  pending: emptyPending(),
 };
 
 /**
@@ -96,6 +107,11 @@ export function useGameSync(code: string) {
       } else if (ev.type === "match_ended") {
         next.status = "complete";
       }
+
+      // A new round invalidates every per-round prediction.
+      if (ev.type === "round_started") next.pending = clearForNewRound(prev.pending);
+      // Retire anything the authoritative state has now caught up with.
+      next.pending = reconcile(next.pending, next.state, next.you, [ev]);
       return next;
     });
     lastSeqRef.current = ev.seq;
@@ -185,6 +201,7 @@ export function useGameSync(code: string) {
       hostId: snap.hostId,
       you: snap.you,
       privateState: snap.privateState ?? null,
+      pending: reconcile(p.pending, normalizeGameState(snap.state), snap.you, []),
       ready: true,
       error: null,
       // Chat replays from the log so history survives a reload.
@@ -285,12 +302,152 @@ export function useGameSync(code: string) {
     };
   }, [code, ingest, heal, loadSnapshot]);
 
+  /* ------------------------------------------------------------ mutations */
+
+  /**
+   * Send a chat message, showing it immediately.
+   *
+   * The optimistic copy carries a nonce that the server echoes back, so it is
+   * retired by the arrival of the real event rather than by the request
+   * returning. That distinction matters: the POST can succeed while the
+   * broadcast is still in flight, and clearing early would make the message
+   * flicker out and back in.
+   */
+  const sendChat = useCallback(
+    async (text: string) => {
+      const msg = text.trim();
+      if (!msg) return;
+      const nonce = crypto.randomUUID();
+      const optimistic: PendingChat = {
+        nonce,
+        playerId: sync.you ?? "",
+        nickname: sync.players.find((p) => p.id === sync.you)?.nickname ?? "You",
+        text: msg,
+        at: new Date().toISOString(),
+      };
+      setSync((p) => ({ ...p, pending: { ...p.pending, chat: [...p.pending.chat, optimistic] } }));
+
+      const res = await fetchJson(`/api/games/${code}/chat`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text: msg, nonce }),
+      });
+      if (!res.ok) {
+        // Flag rather than drop: losing what someone typed is worse than
+        // showing it greyed out with a retry.
+        setSync((p) => ({
+          ...p,
+          pending: {
+            ...p.pending,
+            chat: p.pending.chat.map((c) => (c.nonce === nonce ? { ...c, failed: true } : c)),
+          },
+        }));
+      }
+    },
+    [code, sync.you, sync.players],
+  );
+
+  const retryChat = useCallback(
+    (nonce: string) => {
+      const item = sync.pending.chat.find((c) => c.nonce === nonce);
+      if (!item) return;
+      setSync((p) => ({
+        ...p,
+        pending: { ...p.pending, chat: p.pending.chat.filter((c) => c.nonce !== nonce) },
+      }));
+      void sendChat(item.text);
+    },
+    [sync.pending.chat, sendChat],
+  );
+
+  const discardChat = useCallback((nonce: string) => {
+    setSync((p) => ({
+      ...p,
+      pending: { ...p.pending, chat: p.pending.chat.filter((c) => c.nonce !== nonce) },
+    }));
+  }, []);
+
+  /** Generic optimistic POST: predict, send, roll back on failure. */
+  const optimisticPost = useCallback(
+    async (
+      path: string,
+      body: unknown,
+      predict: (p: Pending) => Pending,
+      rollback: (p: Pending) => Pending,
+    ): Promise<string | null> => {
+      setSync((s0) => ({ ...s0, pending: predict(s0.pending) }));
+      const res = await fetchJson<unknown>(`/api/games/${code}${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        setSync((s0) => ({ ...s0, pending: rollback(s0.pending) }));
+        return res.error;
+      }
+      return null;
+    },
+    [code],
+  );
+
+  const submitStroke = useCallback(
+    (points: [number, number][]) => {
+      const seat = sync.players.find((p) => p.id === sync.you)?.seat ?? 0;
+      const mine = { playerId: sync.you ?? "", seat, points };
+      return optimisticPost(
+        "/stroke",
+        { points },
+        (p) => ({ ...p, strokes: [...p.strokes, mine] }),
+        (p) => ({ ...p, strokes: p.strokes.filter((s0) => s0 !== mine) }),
+      );
+    },
+    [optimisticPost, sync.you, sync.players],
+  );
+
+  const setReady = useCallback(
+    () =>
+      optimisticPost(
+        "/action",
+        { type: "ready" },
+        (p) => ({ ...p, ready: true }),
+        (p) => ({ ...p, ready: false }),
+      ),
+    [optimisticPost],
+  );
+
+  const castVote = useCallback(
+    (targetId: string) =>
+      optimisticPost(
+        "/vote",
+        { targetId },
+        (p) => ({ ...p, voted: true }),
+        (p) => ({ ...p, voted: false }),
+      ),
+    [optimisticPost],
+  );
+
   const forceResync = useCallback(() => {
     lastSeqRef.current = 0;
     readyRef.current = false;
     bufferRef.current = [];
+    // A manual resync means the user distrusts what they are seeing; keep only
+    // failed chat, which is theirs and would otherwise be lost.
+    setSync((p) => ({
+      ...p,
+      pending: { ...emptyPending(), chat: p.pending.chat.filter((c) => c.failed) },
+    }));
     void loadSnapshot();
   }, [loadSnapshot]);
 
-  return { sync, forceResync, refetchPrivate } as const;
+  return {
+    sync,
+    forceResync,
+    refetchPrivate,
+    sendChat,
+    retryChat,
+    discardChat,
+    submitStroke,
+    setReady,
+    castVote,
+  } as const;
 }

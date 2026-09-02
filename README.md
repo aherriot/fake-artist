@@ -197,6 +197,33 @@ npm run test:all
 scenarios, and tears both down — no Neon account, no network. It runs with **no
 Pusher credentials**, so the polling fallback is exercised every time.
 
+## Optimistic updates
+
+Your own actions render immediately (measured at ~4ms, one frame) rather than
+waiting for the round trip: chat, your stroke, pressing Ready, and casting a
+vote.
+
+Predictions live in `lib/game/optimistic.ts`, **separate from the reduced
+authoritative state**. That separation is the point: the sync layer's
+correctness rests on `seq`-ordered events being the only thing that mutates
+game state, so writing a guess into that same object would leave a gap-heal or
+a reload unable to tell a prediction from a fact. The view merges the two for
+display only.
+
+Rules the module enforces:
+
+- A prediction is retired by the **arrival of its event**, never by the request
+  returning. The POST can succeed while the broadcast is still in flight, and
+  clearing early makes the message flicker out and back in. Chat carries a
+  client nonce that the server echoes so the match is exact.
+- **A failed send is kept and flagged**, with retry and discard. Silently
+  dropping what someone typed is worse than showing it greyed out.
+- A new round clears per-round predictions; chat survives, since it spans them.
+
+Only your own actions are ever predicted. Anything the server decides from
+information the client does not have — the vote tally, the reveal, whether a
+guess was accepted — is never guessed at.
+
 ## When things break
 
 | Failure | What the user sees |
