@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { clsx } from "clsx";
 import { useGameSync } from "@/lib/useGameSync";
 import { fetchJson } from "@/lib/fetch-json";
 import { ErrorPanel } from "@/lib/ui/ErrorPanel";
@@ -59,7 +60,12 @@ export default function GameView({ code }: { code: string }) {
         <Wordmark />
         <div className="mt-5 animate-pulse space-y-6">
           <div className="h-24 rounded-sm border border-wall-500 bg-wall-700" />
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div
+        className={clsx(
+          "flex flex-col gap-6",
+          "lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start",
+        )}
+      >
             <div className="aspect-square w-full max-w-[34rem] rounded-sm bg-wall-700" />
             <div className="space-y-5">
               <div className="h-40 rounded-sm border border-wall-500 bg-wall-700" />
@@ -77,6 +83,7 @@ export default function GameView({ code }: { code: string }) {
   const drawer = currentDrawer(state);
   const yourTurn = drawer === sync.you;
   const yourSeat = sync.players.find((p) => p.id === sync.you)?.seat ?? 0;
+  const balloting = state.phase === "voting" || state.phase === "runoff";
 
   return (
     <main className="mx-auto max-w-6xl px-5 py-8">
@@ -88,8 +95,20 @@ export default function GameView({ code }: { code: string }) {
         <StatusBoard sync={sync} code={code.toUpperCase()} />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <section>
+      <div
+        className={clsx(
+          "flex flex-col gap-6",
+          "lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start",
+        )}
+      >
+        <section
+          className={clsx(
+            "lg:col-start-1 lg:row-start-1 lg:row-span-2",
+            // While the ballot is open the roster IS the ballot, so it leads
+            // on a phone; the drawing becomes the reference below it.
+            balloting ? "order-2" : "order-1",
+          )}
+        >
           {/* Anything that resolves the round goes ABOVE the artwork: the
               reveal is the moment of the round and must not sit below a tall
               canvas. Turn-by-turn prompts stay below, out of the way. */}
@@ -146,15 +165,26 @@ export default function GameView({ code }: { code: string }) {
           )}
         </section>
 
-        <aside className="space-y-5">
+        {/* The roster is the ballot while voting, so it leads on a phone.
+            Chat always comes last: it must never sit between the ballot and
+            the drawing you are voting on. */}
+        <div
+          className={clsx(
+            "lg:col-start-2 lg:row-start-1",
+            balloting ? "order-1" : "order-2",
+          )}
+        >
           <Roster
-            sync={sync}
+            game={g}
             drawer={drawer}
             onHighlight={setHighlight}
             highlight={highlight}
           />
+        </div>
+
+        <div className="order-3 lg:col-start-2 lg:row-start-2">
           <Chat game={g} />
-        </aside>
+        </div>
       </div>
 
       {state.phase !== "lobby" && !RESOLVING.has(state.phase) && (

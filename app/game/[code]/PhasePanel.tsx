@@ -4,7 +4,6 @@ import { useState } from "react";
 import type { useGameSync } from "@/lib/useGameSync";
 import { Button, Plaque, penVar } from "@/lib/ui/primitives";
 import { useAction } from "@/lib/ui/useAction";
-import { hasVoted } from "@/lib/game/optimistic";
 import { clsx } from "clsx";
 
 type Game = ReturnType<typeof useGameSync>;
@@ -22,9 +21,10 @@ export function PhasePanel({ game, act, isHost }: { game: Game; act: Act; isHost
   switch (game.sync.state.phase) {
     case "drawing":
       return <DrawingPanel game={game} act={act} isHost={isHost} />;
+    // Voting lives in the roster, beside the seat colours it is judged on.
     case "voting":
     case "runoff":
-      return <VotePanel game={game} />;
+      return null;
     case "guess":
       return <GuessPanel game={game} />;
     case "guess_vote":
@@ -54,70 +54,6 @@ function DrawingPanel({ game, act, isHost }: { game: Game; act: Act; isHost: boo
       <Button size="sm" variant="ghost" disabled={skip.pending} onClick={() => skip.run()}>
         {skip.pending ? "Skipping…" : "Skip their turn"}
       </Button>
-    </Plaque>
-  );
-}
-
-function VotePanel({ game }: { game: Game }) {
-  const { sync } = game;
-  const { state } = sync;
-  const voted = hasVoted(state, sync.pending, sync.you);
-  const [pendingId, setPendingId] = useState<string | null>(null);
-  const cast = useAction(async (id: string) => game.castVote(id));
-
-  const candidates =
-    state.phase === "runoff" && state.runoffCandidates.length > 0
-      ? sync.players.filter((p) => state.runoffCandidates.includes(p.id))
-      : sync.players;
-
-  return (
-    <Plaque>
-      <p className="label-caps">
-        {voted ? "Your vote is in" : "Who is the fake artist?"}
-      </p>
-      {!voted && (
-        <p className="mt-1 text-sm text-label-500">
-          Pick the player whose line looked like a guess. You cannot pick yourself.
-        </p>
-      )}
-      <div className="mt-3 flex flex-wrap gap-2">
-        {candidates
-          .filter((p) => p.id !== sync.you)
-          .map((p) => (
-            <button
-              key={p.id}
-              disabled={voted || cast.pending}
-              onClick={async () => {
-                setPendingId(p.id);
-                await cast.run(p.id);
-                setPendingId(null);
-              }}
-              className={clsx(
-                "flex items-center gap-2 rounded-sm border px-3 py-2 text-sm transition-colors",
-                voted || cast.pending
-                  ? "cursor-not-allowed border-wall-500 opacity-40"
-                  : "border-wall-500 bg-wall-900 hover:border-accent-500",
-                pendingId === p.id && "border-accent-500",
-              )}
-            >
-              <span
-                aria-hidden
-                className="grid size-5 place-items-center rounded-[2px] font-mono text-[10px] text-wall-950"
-                style={{ background: penVar(p.seat + 1) }}
-              >
-                {p.seat + 1}
-              </span>
-              {p.nickname}
-              {pendingId === p.id && cast.pending && (
-                <span className="text-xs text-label-500">…</span>
-              )}
-            </button>
-          ))}
-      </div>
-      {cast.error && <p role="alert" className="mt-3 text-sm text-danger">{cast.error}</p>}
-      <p className="mt-3 text-xs text-label-500">
-        {state.voted.length} of {sync.players.length} voted
-      </p>
     </Plaque>
   );
 }
@@ -231,6 +167,12 @@ function RevealPanel({ game, act, isHost }: { game: Game; act: Act; isHost: bool
   const nameOf = (id: string) => sync.players.find((p) => p.id === id)?.nickname ?? "someone";
   const seatOf = (id: string) => sync.players.find((p) => p.id === id)?.seat ?? 0;
   const fakeWon = r.winners.includes(r.fakeArtistId);
+
+  // target -> who voted for them
+  const counts: Record<string, { voters: string[] }> = {};
+  for (const [voter, target] of Object.entries(r.votes)) {
+    (counts[target] ??= { voters: [] }).voters.push(voter);
+  }
   const ranked = [...sync.players].sort(
     (a, b) => (state.scores[b.id] ?? 0) - (state.scores[a.id] ?? 0),
   );
@@ -259,6 +201,41 @@ function RevealPanel({ game, act, isHost }: { game: Game; act: Act; isHost: bool
           <span className="text-success">The real artists win the round.</span>
         )}
       </p>
+
+      {/* The ballot, now public. Counts alone hide the interesting part --
+          who backed whom, and who was alone in being right. */}
+      {Object.keys(r.votes).length > 0 && (
+        <div className="mt-5 border-t border-wall-500 pt-4">
+          <p className="label-caps mb-2">The vote</p>
+          <ul className="space-y-1 text-sm">
+            {Object.entries(counts)
+              .sort((a, b) => b[1].voters.length - a[1].voters.length)
+              .map(([targetId, { voters }]) => {
+                const wasFake = targetId === r.fakeArtistId;
+                return (
+                  <li key={targetId} className="flex flex-wrap items-baseline gap-x-2">
+                    <span
+                      aria-hidden
+                      className="inline-grid size-4 shrink-0 place-items-center rounded-[2px] font-mono text-[9px] text-wall-950"
+                      style={{ background: penVar(seatOf(targetId) + 1) }}
+                    >
+                      {seatOf(targetId) + 1}
+                    </span>
+                    <span className={wasFake ? "text-accent-400" : "text-label-100"}>
+                      {nameOf(targetId)}
+                    </span>
+                    <span className="text-label-500">
+                      {voters.length} {voters.length === 1 ? "vote" : "votes"}
+                      {" — "}
+                      {voters.map(nameOf).join(", ")}
+                    </span>
+                    {wasFake && <span className="label-caps text-accent-400">the fake artist</span>}
+                  </li>
+                );
+              })}
+          </ul>
+        </div>
+      )}
 
       <ol className="mt-5 space-y-1">
         {ranked.map((p) => (

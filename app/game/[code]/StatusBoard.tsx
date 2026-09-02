@@ -32,7 +32,12 @@ export function StatusBoard({ sync, code }: { sync: SyncState; code: string }) {
   const conn = serverDown ? "offline" : sync.conn;
   const priv = sync.privateState;
   const fake = priv?.role === "fake";
-  const inRound = state.phase !== "lobby" && state.phase !== "complete";
+  const revealing = state.phase === "reveal" || state.phase === "complete";
+  const lastResult = state.results[state.results.length - 1];
+  // Once the round is revealed the topic is public, so the secret framing is
+  // stale -- telling the fake artist "you don't know it" about a subject
+  // everyone just read is nonsense.
+  const inRound = state.phase !== "lobby" && !revealing;
 
   return (
     <div
@@ -100,6 +105,15 @@ export function StatusBoard({ sync, code }: { sync: SyncState; code: string }) {
                 <p className="mt-1 text-xs text-label-500">{state.category}</p>
               </>
             )}
+          </div>
+        )}
+
+        {/* Revealed: the subject is public, so everyone sees the same thing. */}
+        {revealing && lastResult && (
+          <div className="sm:max-w-xs sm:text-right">
+            <p className="label-caps">The subject was</p>
+            <p className="mt-0.5 font-display text-2xl">{lastResult.topic}</p>
+            <p className="mt-1 text-xs text-label-500">{lastResult.category}</p>
           </div>
         )}
 
