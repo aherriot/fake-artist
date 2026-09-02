@@ -238,6 +238,28 @@ Only your own actions are ever predicted. Anything the server decides from
 information the client does not have — the vote tally, the reveal, whether a
 guess was accepted — is never guessed at.
 
+## Verifying a deployment
+
+```bash
+npm run verify:deploy https://your-app.vercel.app
+```
+
+Plays a real round against the deployed site and checks the things that fail
+**silently**:
+
+- **Realtime actually configured.** `NEXT_PUBLIC_*` is inlined at *build* time,
+  so if the Pusher key was not set in Vercel before the build ran, the app does
+  not error — every client quietly falls back to 2-second polling. It works,
+  just slowly and at needless database cost, and nothing in the logs says so.
+  Setting the variable is not enough: **the build must re-run.**
+- **The production database has a schema.** Otherwise the first click 503s.
+- **`CRON_SECRET` is set**, or cleanup 500s forever and old games pile up.
+- **Secrets stay secret**, checked mid-round — after the reveal the topic is
+  public by design, so asserting it is hidden at that point tests nothing.
+
+It leaves one finished game behind, with players named `smoke-*`; the cleanup
+cron removes it within 24 hours.
+
 ## When things break
 
 | Failure | What the user sees |
