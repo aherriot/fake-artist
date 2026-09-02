@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 rm -rf .test-build
-npx tsc lib/game/reduce.ts lib/game/types.ts --outDir .test-build \
+npx tsc lib/game/reduce.ts lib/game/types.ts lib/game/words.ts --outDir .test-build \
   --module esnext --target es2022 --moduleResolution bundler
 # tsc keeps extensionless specifiers; Node's ESM resolver needs them explicit.
 sed -i '' 's|from "./types"|from "./types.js"|' .test-build/reduce.js

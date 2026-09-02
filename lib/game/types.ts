@@ -1,57 +1,152 @@
 /**
- * Game types for "A Fake Artist Goes to New York".
+ * A Fake Artist Goes to New York — game model.
  *
- * The rules are not implemented yet. What IS in place is the shape the sync
- * layer depends on: public state that everyone may see, private per-player
- * state that only its owner ever receives, and an append-only event log whose
- * every payload is public by construction.
- *
- * When the rules land, this file and reduce.ts are what change. The sync
- * layer, the write paths, and the storage split do not.
+ * The invariant everything else rests on: **every payload in the event log is
+ * public**. Secrets live in `PrivateState`, which is only ever returned to its
+ * own owner. If a value would tell you the topic or who the Fake Artist is, it
+ * must not appear in a GameEvent.
  */
+
+export const MIN_PLAYERS =
+  process.env.NEXT_PUBLIC_ALLOW_TWO_PLAYER_GAMES === "1" ? 2 : 3;
+export const MAX_PLAYERS = 10;
+/** Two passes around the table: everyone draws twice. */
+export const PASSES = 2;
 
 export type GameStatus = "lobby" | "active" | "complete";
 
 /**
- * 3 is the real minimum: below that the vote is a coin flip. 2 is permitted
- * only behind the dev flag, so the full flow can be exercised across two
- * browsers.
- *
- * NEXT_PUBLIC_ matters here. This module is shared by client and server, and a
- * server-only variable would leave the browser computing 3 while the server
- * allowed 2 -- the Start button would sit disabled on a game the server would
- * happily start.
+ * Round phases. Every phase ends when the people in it have acted -- there are
+ * no timers in v1 -- with a host override for anyone stuck.
  */
-export const MIN_PLAYERS =
-  process.env.NEXT_PUBLIC_ALLOW_TWO_PLAYER_GAMES === "1" ? 2 : 3;
-export const MAX_PLAYERS = 10;
+export type Phase =
+  | "lobby"
+  | "drawing"
+  | "discussion"
+  | "voting"
+  | "runoff"
+  | "guess"
+  | "guess_vote"
+  | "reveal"
+  | "complete";
+
+export interface Stroke {
+  playerId: string;
+  seat: number;
+  /** Normalised 0..1 points, so the drawing survives any canvas size. */
+  points: [number, number][];
+}
+
+export interface RoundResult {
+  round: number;
+  fakeArtistId: string;
+  topic: string;
+  category: string;
+  /** voterId -> accusedId, revealed only once the round is over. */
+  votes: Record<string, string>;
+  accusedId: string | null;
+  caught: boolean;
+  guess: string | null;
+  guessAccepted: boolean | null;
+  winners: string[];
+}
 
 /** PUBLIC state. Broadcast to everyone; must never contain a secret. */
 export interface GameState {
+  phase: Phase;
   round: number;
+  totalRounds: number;
+  /** Seat order, fixed for the match. Drawing follows it. */
+  seatOrder: string[];
+  /** Public from the moment the round starts. The Fake Artist sees it too. */
+  category: string | null;
+  /** 0..(seats * PASSES - 1). Whose turn is derived from this. */
+  turnIndex: number;
+  strokes: Stroke[];
+  /** Players who have pressed Ready to vote. Public by nature. */
+  ready: string[];
+  /** Who has voted -- the FACT is public, the vote is not. */
+  voted: string[];
+  /** Narrowed set during a runoff; empty otherwise. */
+  runoffCandidates: string[];
+  /** Revealed only when the round resolves. */
+  votes: Record<string, string>;
+  accusedId: string | null;
+  guess: string | null;
+  guessVoted: string[];
+  /** Players already the Fake Artist. Added at REVEAL, never at round start,
+   *  which would leak the current round's Fake Artist immediately. */
+  hasBeenFake: string[];
+  usedTopics: string[];
+  scores: Record<string, number>;
+  results: RoundResult[];
   startedAt: string | null;
   endedAt: string | null;
 }
 
 /**
- * PRIVATE per-player state: never broadcast, never written to the event log,
- * and only ever returned to its own owner.
- *
- * This game needs it -- the secret word and who the fake artist is are both
- * hidden information -- so the table and the "only your own row" guarantee
- * are kept even though the shape is still open.
+ * PRIVATE per-player state. Never broadcast, never in the event log, only ever
+ * returned to its owner.
  */
-export type PrivateState = Record<string, unknown>;
+export interface PrivateState {
+  role: "artist" | "fake";
+  /** null for the Fake Artist -- that absence IS the game. */
+  topic: string | null;
+  /** This round's secret vote, until everyone has voted. */
+  vote: string | null;
+  guessVote: "accept" | "reject" | null;
+}
 
 export function initialGameState(): GameState {
-  return { round: 0, startedAt: null, endedAt: null };
+  return {
+    phase: "lobby",
+    round: 0,
+    totalRounds: 0,
+    seatOrder: [],
+    category: null,
+    turnIndex: 0,
+    strokes: [],
+    ready: [],
+    voted: [],
+    runoffCandidates: [],
+    votes: {},
+    accusedId: null,
+    guess: null,
+    guessVoted: [],
+    hasBeenFake: [],
+    usedTopics: [],
+    scores: {},
+    results: [],
+    startedAt: null,
+    endedAt: null,
+  };
 }
 
 export function normalizeGameState(raw: Partial<GameState> | null | undefined): GameState {
   const base = initialGameState();
   if (!raw || typeof raw !== "object") return base;
+  const arr = <T,>(v: unknown, d: T[]): T[] => (Array.isArray(v) ? (v as T[]) : d);
+  const obj = <T,>(v: unknown, d: T): T =>
+    v && typeof v === "object" && !Array.isArray(v) ? (v as T) : d;
   return {
+    phase: typeof raw.phase === "string" ? (raw.phase as Phase) : base.phase,
     round: typeof raw.round === "number" ? raw.round : base.round,
+    totalRounds: typeof raw.totalRounds === "number" ? raw.totalRounds : base.totalRounds,
+    seatOrder: arr(raw.seatOrder, base.seatOrder),
+    category: typeof raw.category === "string" ? raw.category : null,
+    turnIndex: typeof raw.turnIndex === "number" ? raw.turnIndex : base.turnIndex,
+    strokes: arr(raw.strokes, base.strokes),
+    ready: arr(raw.ready, base.ready),
+    voted: arr(raw.voted, base.voted),
+    runoffCandidates: arr(raw.runoffCandidates, base.runoffCandidates),
+    votes: obj(raw.votes, base.votes),
+    accusedId: typeof raw.accusedId === "string" ? raw.accusedId : null,
+    guess: typeof raw.guess === "string" ? raw.guess : null,
+    guessVoted: arr(raw.guessVoted, base.guessVoted),
+    hasBeenFake: arr(raw.hasBeenFake, base.hasBeenFake),
+    usedTopics: arr(raw.usedTopics, base.usedTopics),
+    scores: obj(raw.scores, base.scores),
+    results: arr(raw.results, base.results),
     startedAt: typeof raw.startedAt === "string" ? raw.startedAt : null,
     endedAt: typeof raw.endedAt === "string" ? raw.endedAt : null,
   };
@@ -64,13 +159,43 @@ export interface PlayerInfo {
 }
 
 /**
- * The event log. Every payload is PUBLIC -- that is the invariant that keeps
- * secrets out of every broadcast. Game-specific events get added here.
+ * The event log. Note what is ABSENT: no event carries the topic or the Fake
+ * Artist's identity until `round_revealed`, when both are public anyway.
  */
 export type GameEvent =
   | { seq: number; type: "player_joined"; payload: PlayerInfo }
-  | { seq: number; type: "game_started"; payload: { at: string } }
-  | { seq: number; type: "game_ended"; payload: { at: string } }
+  | {
+      seq: number;
+      type: "match_started";
+      payload: { at: string; seatOrder: string[]; totalRounds: number };
+    }
+  | {
+      seq: number;
+      type: "round_started";
+      payload: { round: number; category: string };
+    }
+  | { seq: number; type: "stroke_drawn"; payload: Stroke }
+  | { seq: number; type: "turn_skipped"; payload: { playerId: string } }
+  | { seq: number; type: "player_ready"; payload: { playerId: string } }
+  | { seq: number; type: "discussion_started"; payload: Record<string, never> }
+  | { seq: number; type: "voting_started"; payload: { candidates: string[] } }
+  | { seq: number; type: "player_voted"; payload: { playerId: string } }
+  | {
+      seq: number;
+      type: "vote_resolved";
+      payload: { votes: Record<string, string>; accusedId: string | null; tied: string[] };
+    }
+  /** Emitted only when the accused really IS the Fake Artist. The reducer is
+   *  public and cannot know that, so the server decides and says so here. */
+  | { seq: number; type: "guess_opened"; payload: Record<string, never> }
+  | { seq: number; type: "guess_submitted"; payload: { guess: string } }
+  | { seq: number; type: "guess_voted"; payload: { playerId: string } }
+  | {
+      seq: number;
+      type: "round_revealed";
+      payload: RoundResult & { scores: Record<string, number> };
+    }
+  | { seq: number; type: "match_ended"; payload: { at: string } }
   | {
       seq: number;
       type: "chat";
@@ -79,20 +204,18 @@ export type GameEvent =
 
 export type GameEventType = GameEvent["type"];
 
-/**
- * A GameEvent before the database assigns its `seq`.
- *
- * A distributive conditional rather than `Omit<GameEvent, "seq">`: a plain
- * Omit over a union collapses it into one object whose `type` and `payload`
- * are no longer correlated, so narrowing on `type` stops working.
- */
 export type DraftEvent = GameEvent extends infer T
   ? T extends GameEvent
     ? Omit<T, "seq">
     : never
   : never;
 
-export type GameAction = { type: "start_game" };
+export type GameAction =
+  | { type: "start_match" }
+  | { type: "ready" }
+  | { type: "skip_turn" }
+  | { type: "open_voting" }
+  | { type: "next_round" };
 
 export interface Snapshot {
   gameId: string;
@@ -104,6 +227,23 @@ export interface Snapshot {
   hostId: string;
   you: string;
   isPlayer: boolean;
-  /** ONLY the requesting player's private state. Never anyone else's. */
   privateState: PrivateState | null;
 }
+
+/* ----------------------------------------------------------- derived state */
+
+/** Total drawing turns in a round. */
+export const turnsInRound = (seats: number) => seats * PASSES;
+
+/** Whose turn it is, or null if drawing is over. */
+export function currentDrawer(state: GameState): string | null {
+  const n = state.seatOrder.length;
+  if (n === 0 || state.turnIndex >= turnsInRound(n)) return null;
+  return state.seatOrder[state.turnIndex % n];
+}
+
+/** Which pass (1-indexed) the drawing is in. */
+export const currentPass = (state: GameState) =>
+  state.seatOrder.length === 0
+    ? 1
+    : Math.min(PASSES, Math.floor(state.turnIndex / state.seatOrder.length) + 1);

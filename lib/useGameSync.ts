@@ -91,9 +91,9 @@ export function useGameSync(code: string) {
           : [...prev.players, ev.payload].sort((a, b) => a.seat - b.seat);
       } else if (ev.type === "chat") {
         next.chat = [...prev.chat, ev.payload];
-      } else if (ev.type === "game_started") {
+      } else if (ev.type === "match_started") {
         next.status = "active";
-      } else if (ev.type === "game_ended") {
+      } else if (ev.type === "match_ended") {
         next.status = "complete";
       }
       return next;
@@ -148,8 +148,15 @@ export function useGameSync(code: string) {
       if (ev.seq === lastSeqRef.current + 1) {
         applyEvent(ev);
         // Private state never travels in the log, so it cannot be derived by
-        // replay -- re-read it whenever an event may have changed it.
-        if (ev.type === "game_started") void refetchPrivate();
+        // replay -- re-read it whenever an event may have changed it. A new
+        // round deals a new role and topic; a reveal clears the ballots.
+        if (
+          ev.type === "round_started" ||
+          ev.type === "round_revealed" ||
+          ev.type === "match_started"
+        ) {
+          void refetchPrivate();
+        }
       } else if (ev.seq > lastSeqRef.current + 1) {
         // Gap: we missed something. Refetch rather than guess.
         void heal(lastSeqRef.current);

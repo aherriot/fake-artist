@@ -98,11 +98,11 @@ export default function GameView({ code }: { code: string }) {
 
           {sync.status === "lobby" && isHost && (
             <button
-              onClick={() => act({ type: "start_game" })}
+              onClick={() => act({ type: "start_match" })}
               disabled={sync.players.length < MIN_PLAYERS}
               style={miniBtn}
             >
-              Start game ({sync.players.length}/{MIN_PLAYERS} min)
+              Start match ({sync.players.length}/{MIN_PLAYERS} min)
             </button>
           )}
           {sync.status === "lobby" && !isHost && (

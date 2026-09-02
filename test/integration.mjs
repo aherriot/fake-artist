@@ -173,39 +173,247 @@ await test("a game below the minimum cannot start", async () => {
   const a = browser(), b = browser();
   const g = await create(a, "Alice");
   await b.post(`/api/games/${g.body.code}/join`, { nickname: "Bob" });
-  const r = await a.post(`/api/games/${g.body.code}/action`, { type: "start_game" });
+  const r = await a.post(`/api/games/${g.body.code}/action`, { type: "start_match" });
   assert.strictEqual(r.status, 400, "2 players should not be enough by default");
   assert.match(r.body.error, /at least/i);
 });
 
 await test("only the host can start", async () => {
   const { a, b, code } = await lobby();
-  const notHost = await b.post(`/api/games/${code}/action`, { type: "start_game" });
+  const notHost = await b.post(`/api/games/${code}/action`, { type: "start_match" });
   assert.strictEqual(notHost.status, 400);
-  const ok = await a.post(`/api/games/${code}/action`, { type: "start_game" });
+  const ok = await a.post(`/api/games/${code}/action`, { type: "start_match" });
   assert.strictEqual(ok.status, 200, JSON.stringify(ok.body));
 });
 
 await test("a started game cannot be started twice", async () => {
   const { a, code } = await lobby();
-  await a.post(`/api/games/${code}/action`, { type: "start_game" });
-  const again = await a.post(`/api/games/${code}/action`, { type: "start_game" });
+  await a.post(`/api/games/${code}/action`, { type: "start_match" });
+  const again = await a.post(`/api/games/${code}/action`, { type: "start_match" });
   assert.strictEqual(again.status, 400);
 });
 
 await test("cannot join a game already under way", async () => {
   const { a, code } = await lobby();
-  await a.post(`/api/games/${code}/action`, { type: "start_game" });
+  await a.post(`/api/games/${code}/action`, { type: "start_match" });
   const late = browser();
   const r = await late.post(`/api/games/${code}/join`, { nickname: "Late" });
   assert.strictEqual(r.status, 400);
+});
+
+console.log("\n--- a full round ---");
+
+const stroke = () => ({ points: [[0.1, 0.1], [0.5, 0.6], [0.9, 0.2]] });
+
+/** Everyone draws until the drawing phase ends. */
+async function drawAll(bs, code) {
+  for (let guard = 0; guard < 60; guard++) {
+    const s = (await bs[0].get(`/api/games/${code}/state`)).body.state;
+    if (s.phase !== "drawing") return s;
+    const drawer = s.seatOrder[s.turnIndex % s.seatOrder.length];
+    const who = bs.find(async () => true);
+    // Find the browser whose player id is the current drawer.
+    let actor = null;
+    for (const b of bs) {
+      const me = (await b.get(`/api/games/${code}/state`)).body;
+      if (me.you === drawer) { actor = b; break; }
+    }
+    assert.ok(actor, "current drawer must be one of the players");
+    const r = await actor.post(`/api/games/${code}/stroke`, stroke());
+    assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+    void who;
+  }
+  throw new Error("drawing never ended");
+}
+
+async function startedMatch() {
+  const { a, b, c, code } = await lobby();
+  const r = await a.post(`/api/games/${code}/action`, { type: "start_match" });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  return { a, b, c, bs: [a, b, c], code };
+}
+
+await test("starting a match deals exactly one fake artist and hides the topic", async () => {
+  const { bs, code } = await startedMatch();
+  const privs = [];
+  for (const b of bs) privs.push((await b.get(`/api/games/${code}/state`)).body.privateState);
+  const fakes = privs.filter((p) => p.role === "fake");
+  assert.strictEqual(fakes.length, 1, "exactly one fake artist");
+  assert.strictEqual(fakes[0].topic, null, "the fake artist is given no topic");
+  const artists = privs.filter((p) => p.role === "artist");
+  assert.ok(artists.every((p) => typeof p.topic === "string" && p.topic.length > 0));
+  assert.strictEqual(new Set(artists.map((p) => p.topic)).size, 1, "artists share one topic");
+});
+
+await test("the category is public but the topic never leaves the database", async () => {
+  const { bs, code } = await startedMatch();
+  const snaps = [];
+  for (const b of bs) snaps.push((await b.get(`/api/games/${code}/state`)).body);
+  const topic = snaps.find((s) => s.privateState.topic)?.privateState.topic;
+  assert.ok(topic, "an artist has the topic");
+  assert.ok(snaps.every((s) => typeof s.state.category === "string"), "category is public");
+
+  // The fake artist's entire payload must not contain the topic anywhere.
+  const fakeSnap = snaps.find((s) => s.privateState.role === "fake");
+  assert.ok(!JSON.stringify(fakeSnap).includes(topic), "topic leaked to the fake artist");
+
+  // Nor may the event log, which every client receives in full.
+  const ev = await bs[0].get(`/api/games/${code}/events?since=0`);
+  const raw = JSON.stringify(ev.body);
+  assert.ok(!raw.includes(topic), "topic leaked into the event log");
+  assert.ok(!raw.includes('"role"'), "roles leaked into the event log");
+});
+
+await test("drawing follows seat order for two passes, then discussion", async () => {
+  const { bs, code } = await startedMatch();
+  const before = (await bs[0].get(`/api/games/${code}/state`)).body.state;
+  assert.strictEqual(before.phase, "drawing");
+  const after = await drawAll(bs, code);
+  assert.strictEqual(after.phase, "discussion");
+  assert.strictEqual(after.strokes.length, before.seatOrder.length * 2, "two passes each");
+});
+
+await test("a player cannot draw out of turn", async () => {
+  const { bs, code } = await startedMatch();
+  const s = (await bs[0].get(`/api/games/${code}/state`)).body.state;
+  const drawer = s.seatOrder[0];
+  for (const b of bs) {
+    const me = (await b.get(`/api/games/${code}/state`)).body;
+    if (me.you !== drawer) {
+      const r = await b.post(`/api/games/${code}/stroke`, stroke());
+      assert.strictEqual(r.status, 400, "out-of-turn stroke must be rejected");
+      assert.match(r.body.error, /your turn/i);
+      return;
+    }
+  }
+});
+
+await test("a malformed stroke is rejected", async () => {
+  const { bs, code } = await startedMatch();
+  const s = (await bs[0].get(`/api/games/${code}/state`)).body.state;
+  const drawer = s.seatOrder[0];
+  let actor = null;
+  for (const b of bs) {
+    const me = (await b.get(`/api/games/${code}/state`)).body;
+    if (me.you === drawer) { actor = b; break; }
+  }
+  for (const bad of [{ points: [[0, 0]] }, { points: [[0, 0], [2, 2]] }, { points: "x" }]) {
+    const r = await actor.post(`/api/games/${code}/stroke`, bad);
+    assert.strictEqual(r.status, 400, `should reject ${JSON.stringify(bad)}`);
+  }
+});
+
+await test("votes stay secret until the last one lands", async () => {
+  const { bs, code } = await startedMatch();
+  await drawAll(bs, code);
+  for (const b of bs) await b.post(`/api/games/${code}/action`, { type: "ready" });
+  await bs[0].post(`/api/games/${code}/action`, { type: "open_voting" });
+
+  const s0 = (await bs[0].get(`/api/games/${code}/state`)).body;
+  assert.strictEqual(s0.state.phase, "voting");
+
+  // First vote: the fact is public, the choice is not.
+  const target = s0.state.seatOrder.find((id) => id !== s0.you);
+  await bs[0].post(`/api/games/${code}/vote`, { targetId: target });
+  const mid = (await bs[1].get(`/api/games/${code}/state`)).body;
+  assert.deepStrictEqual(mid.state.voted, [s0.you], "who has voted is public");
+  assert.deepStrictEqual(mid.state.votes, {}, "what they voted is not");
+
+  const ev = await bs[1].get(`/api/games/${code}/events?since=0`);
+  const voteEvents = ev.body.events.filter((e) => e.type === "player_voted");
+  assert.ok(voteEvents.every((e) => !("targetId" in e.payload)), "ballot leaked into the log");
+});
+
+await test("a player cannot vote twice or for themselves", async () => {
+  const { bs, code } = await startedMatch();
+  await drawAll(bs, code);
+  for (const b of bs) await b.post(`/api/games/${code}/action`, { type: "ready" });
+  await bs[0].post(`/api/games/${code}/action`, { type: "open_voting" });
+  const me = (await bs[0].get(`/api/games/${code}/state`)).body;
+  const other = me.state.seatOrder.find((id) => id !== me.you);
+
+  const self = await bs[0].post(`/api/games/${code}/vote`, { targetId: me.you });
+  assert.strictEqual(self.status, 400, "self-vote rejected");
+  await bs[0].post(`/api/games/${code}/vote`, { targetId: other });
+  const twice = await bs[0].post(`/api/games/${code}/vote`, { targetId: other });
+  assert.strictEqual(twice.status, 400, "double vote rejected");
+});
+
+await test("a complete round reaches a reveal and scores someone", async () => {
+  const { bs, code } = await startedMatch();
+  await drawAll(bs, code);
+  for (const b of bs) await b.post(`/api/games/${code}/action`, { type: "ready" });
+  await bs[0].post(`/api/games/${code}/action`, { type: "open_voting" });
+
+  // Everyone accuses the same player, so there is a clear plurality.
+  const s = (await bs[0].get(`/api/games/${code}/state`)).body;
+  const accused = s.state.seatOrder[0];
+  for (const b of bs) {
+    const me = (await b.get(`/api/games/${code}/state`)).body;
+    const target = me.you === accused ? s.state.seatOrder[1] : accused;
+    const r = await b.post(`/api/games/${code}/vote`, { targetId: target });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  }
+
+  let st = (await bs[0].get(`/api/games/${code}/state`)).body.state;
+
+  // If the room caught the fake artist, they guess and the room judges it.
+  if (st.phase === "guess") {
+    for (const b of bs) {
+      const me = (await b.get(`/api/games/${code}/state`)).body;
+      if (me.privateState.role === "fake") {
+        const r = await b.post(`/api/games/${code}/guess`, { guess: "definitely wrong" });
+        assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+      }
+    }
+    for (const b of bs) {
+      const me = (await b.get(`/api/games/${code}/state`)).body;
+      if (me.privateState.role !== "fake") {
+        await b.post(`/api/games/${code}/guess-vote`, { accept: false });
+      }
+    }
+    st = (await bs[0].get(`/api/games/${code}/state`)).body.state;
+  }
+
+  assert.strictEqual(st.phase, "reveal", `expected reveal, got ${st.phase}`);
+  assert.strictEqual(st.results.length, 1, "one round recorded");
+  const total = Object.values(st.scores).reduce((a, b) => a + b, 0);
+  assert.ok(total > 0, "somebody scored");
+  assert.strictEqual(st.hasBeenFake.length, 1, "the fake artist is recorded at reveal");
+});
+
+await test("the fake artist cannot judge their own guess", async () => {
+  const { bs, code } = await startedMatch();
+  await drawAll(bs, code);
+  for (const b of bs) await b.post(`/api/games/${code}/action`, { type: "ready" });
+  await bs[0].post(`/api/games/${code}/action`, { type: "open_voting" });
+  let fake = null;
+  for (const b of bs) {
+    const me = (await b.get(`/api/games/${code}/state`)).body;
+    if (me.privateState.role === "fake") fake = me.you;
+  }
+  for (const b of bs) {
+    const me = (await b.get(`/api/games/${code}/state`)).body;
+    const target = me.you === fake ? me.state.seatOrder.find((i) => i !== fake) : fake;
+    await b.post(`/api/games/${code}/vote`, { targetId: target });
+  }
+  const st = (await bs[0].get(`/api/games/${code}/state`)).body.state;
+  if (st.phase !== "guess") return; // room failed to convict; nothing to assert
+  for (const b of bs) {
+    const me = (await b.get(`/api/games/${code}/state`)).body;
+    if (me.privateState.role === "fake") {
+      await b.post(`/api/games/${code}/guess`, { guess: "x" });
+      const r = await b.post(`/api/games/${code}/guess-vote`, { accept: true });
+      assert.strictEqual(r.status, 403, "the fake artist must not judge their own guess");
+    }
+  }
 });
 
 console.log("\n--- event log and sync ---");
 
 await test("seq is gapless from 1", async () => {
   const { a, b, code } = await lobby();
-  await a.post(`/api/games/${code}/action`, { type: "start_game" });
+  await a.post(`/api/games/${code}/action`, { type: "start_match" });
   await a.post(`/api/games/${code}/chat`, { text: "one" });
   await b.post(`/api/games/${code}/chat`, { text: "two" });
   const ev = await a.get(`/api/games/${code}/events?since=0`);

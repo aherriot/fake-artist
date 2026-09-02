@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { dbTx } from "@/lib/db";
 import { allocSeq, Conflict, MAX_ATTEMPTS, backoff, type Tx } from "./mutate";
 import type { DraftEvent, GameEvent, GameState, GameStatus, PrivateState } from "./types";
+import { reduce } from "./reduce";
 
 export interface PrivateCtx {
   gameId: string;
@@ -17,13 +18,15 @@ export type PrivateDecision =
       ok: true;
       /** The player's new private row. Never broadcast. */
       data: PrivateState;
-      /** Optional PUBLIC event. Must not contain anything secret. */
-      event?: DraftEvent;
+      /** PUBLIC events. Must not contain anything secret. Several are allowed
+       *  because one private act can also resolve a phase -- the last vote
+       *  cast both records that vote and settles the round. */
+      events?: DraftEvent[];
     }
   | { ok: false; error: string; code?: number };
 
 export type PrivateResult =
-  | { ok: true; gameId: string; events: GameEvent[]; priv: PrivateState }
+  | { ok: true; gameId: string; events: GameEvent[]; priv: PrivateState; state: GameState }
   | { ok: false; error: string; code: number };
 
 /**
@@ -93,12 +96,29 @@ export async function mutatePlayer(
       if (upd.rows.length === 0) throw new Conflict();
 
       const events: GameEvent[] = [];
-      if (decision.event) events.push(await allocSeq(tx, game.id, decision.event));
+      let state = game.state;
+      for (const draft of decision.events ?? []) {
+        const ev = await allocSeq(tx, game.id, draft);
+        events.push(ev);
+        state = reduce(state, ev);
+      }
 
-      // Keep the game from looking idle to the cleanup cron.
-      await tx.execute(sql`UPDATE games SET updated_at = now() WHERE id = ${game.id}::uuid`);
+      if (events.length > 0) {
+        // Public events change public state, so the shared row is written --
+        // but only when there is something public to say. A private write
+        // that emits nothing never touches it.
+        const upd2 = await tx.execute<{ version: number }>(sql`
+          UPDATE games SET state = ${JSON.stringify(state)}::jsonb,
+                 version = version + 1, updated_at = now()
+           WHERE id = ${game.id}::uuid AND version = ${game.version}
+          RETURNING version
+        `);
+        if (upd2.rows.length === 0) throw new Conflict();
+      } else {
+        await tx.execute(sql`UPDATE games SET updated_at = now() WHERE id = ${game.id}::uuid`);
+      }
 
-      return { ok: true as const, gameId: game.id, events, priv: decision.data };
+      return { ok: true as const, gameId: game.id, events, priv: decision.data, state };
     });
   } catch (err) {
     if (err instanceof Conflict) {

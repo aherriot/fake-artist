@@ -15,7 +15,10 @@ export interface MutationCtx {
 }
 
 export interface Produced {
-  event: DraftEvent;
+  /** Public events, applied in order. Several are allowed because one action
+   *  can drive more than one transition -- starting a match both begins the
+   *  match and opens its first round. */
+  events: DraftEvent[];
   status?: GameStatus;
 }
 
@@ -24,7 +27,7 @@ export type Decision =
   | { ok: false; error: string; code?: number };
 
 export type MutateResult =
-  | { ok: true; gameId: string; event: GameEvent; state: GameState }
+  | { ok: true; gameId: string; events: GameEvent[]; state: GameState }
   | { ok: false; error: string; code: number };
 
 export class Conflict extends Error {}
@@ -115,8 +118,12 @@ export async function mutate(
       if (!decision.ok)
         return { ok: false as const, error: decision.error, code: decision.code ?? 400 };
 
-      const { event: draft, status: nextStatus } = decision.produced;
-      const nextState = reduce(game.state, { ...draft, seq: 0 } as GameEvent);
+      const { events: drafts, status: nextStatus } = decision.produced;
+
+      // seq is assigned by the database below; 0 is a placeholder that the
+      // reducer never reads.
+      let nextState = game.state;
+      for (const d of drafts) nextState = reduce(nextState, { ...d, seq: 0 } as GameEvent);
 
       const updated = await tx.execute<{ version: number }>(sql`
         UPDATE games
@@ -129,8 +136,9 @@ export async function mutate(
       `);
       if (updated.rows.length === 0) throw new Conflict();
 
-      const event = await allocSeq(tx, game.id, draft);
-      return { ok: true as const, gameId: game.id, event, state: nextState };
+      const events: GameEvent[] = [];
+      for (const d of drafts) events.push(await allocSeq(tx, game.id, d));
+      return { ok: true as const, gameId: game.id, events, state: nextState };
     });
   } catch (err) {
     if (err instanceof Conflict) {

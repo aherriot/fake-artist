@@ -3,7 +3,7 @@ import { apiHandler } from "@/lib/api";
 import { sql } from "drizzle-orm";
 import { getOrCreatePlayerId } from "@/lib/session";
 import { mutate } from "@/lib/game/mutate";
-import { broadcast } from "@/lib/pusher-server";
+import { broadcastAll } from "@/lib/pusher-server";
 import { MAX_PLAYERS } from "@/lib/game/types";
 
 // Next.js requires these to be literal exports in the route file itself --
@@ -53,10 +53,10 @@ async function postHandler(req: Request, { params }: { params: Promise<{ code: s
     return {
       ok: true as const,
       produced: {
-        event: {
+        events: [{
           type: "player_joined" as const,
           payload: { id: playerId, nickname: name, seat },
-        },
+        }],
       },
     };
   });
@@ -68,7 +68,7 @@ async function postHandler(req: Request, { params }: { params: Promise<{ code: s
     return NextResponse.json({ error: result.error }, { status: result.code });
   }
 
-  await broadcast(code.toUpperCase(), result.event);
+  await broadcastAll(code.toUpperCase(), result.events);
   return NextResponse.json({ ok: true, playerId });
 }
 

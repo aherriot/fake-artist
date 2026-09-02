@@ -29,6 +29,10 @@ export const EVENT_NAME = "game-event";
  * committed. Clients self-heal via gap detection on their next event or on
  * reconnect, so a dropped broadcast costs latency, not correctness.
  */
+export async function broadcastAll(code: string, events: GameEvent[]): Promise<void> {
+  for (const e of events) await broadcast(code, e);
+}
+
 export async function broadcast(code: string, event: GameEvent): Promise<void> {
   try {
     await pusher.trigger(channelFor(code), EVENT_NAME, event);

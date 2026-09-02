@@ -3,10 +3,12 @@
 An online multiplayer implementation of the drawing-and-deduction party game.
 Next.js on Vercel, Neon Postgres, realtime over Pusher.
 
-**Status: rules not implemented.** What works today is the platform underneath
-them — lobby, join by code, presence, realtime sync, reload-resume, private
-per-player state, error handling, cleanup, and a test suite. The canvas, roles,
-word, turn order, and voting are next.
+**Status: the full round loop works; the canvas is next.** Roles and topics are
+dealt in secret, drawing follows seat order for two passes, votes are cast
+secretly and revealed together, ties trigger a runoff, a caught Fake Artist
+guesses and the room judges it, and scores accumulate across a match. What is
+missing is the drawing surface itself — strokes are submitted as normalised
+point arrays and the API is complete, but there is no canvas UI yet.
 
 The sync layer is inherited from an earlier prototype (the git history predates
 this game) where it was built and load-tested. Only the rules layer changed.
@@ -70,9 +72,21 @@ and never conflict.
 The seam is deliberate — these files change, nothing else does:
 
 ```
-lib/game/types.ts     GameState, PrivateState, the GameEvent union
-lib/game/reduce.ts    the pure reducer + server-side action validation
+lib/game/types.ts     GameState, PrivateState, the GameEvent union, phases
+lib/game/reduce.ts    the pure reducer, tally, scoring, and all validation
+lib/game/rounds.ts    server-side orchestration: roles, topics, reveal
+lib/game/words.ts     the curated {category, topic} pairs
 ```
+
+### One rule worth knowing before changing any of it
+
+**The reducer is public and must never decide anything that depends on a
+secret.** It got this wrong once: `vote_resolved` moved straight to the guess
+phase whenever someone was accused, but a guess should only happen if the
+accused *is* the Fake Artist — and the reducer cannot know that. The server
+now appends either `guess_opened` or `round_revealed`, because only the server
+knows. If you find yourself wanting the reducer to branch on something hidden,
+that branch belongs in `rounds.ts`.
 
 Supporting cast, already built and tested:
 
