@@ -12,8 +12,18 @@
 
 export type GameStatus = "lobby" | "active" | "complete";
 
-/** Minimum players to start. Revisit once the real rules are in. */
-export const MIN_PLAYERS = 2;
+/**
+ * 3 is the real minimum: below that the vote is a coin flip. 2 is permitted
+ * only behind the dev flag, so the full flow can be exercised across two
+ * browsers.
+ *
+ * NEXT_PUBLIC_ matters here. This module is shared by client and server, and a
+ * server-only variable would leave the browser computing 3 while the server
+ * allowed 2 -- the Start button would sit disabled on a game the server would
+ * happily start.
+ */
+export const MIN_PLAYERS =
+  process.env.NEXT_PUBLIC_ALLOW_TWO_PLAYER_GAMES === "1" ? 2 : 3;
 export const MAX_PLAYERS = 10;
 
 /** PUBLIC state. Broadcast to everyone; must never contain a secret. */

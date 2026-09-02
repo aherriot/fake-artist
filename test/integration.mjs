@@ -159,29 +159,42 @@ await test("non-member cannot authorise the presence channel", async () => {
 
 console.log("\n--- lifecycle ---");
 
-async function twoPlayerGame() {
-  const a = browser(), b = browser();
+/** A lobby at the real minimum player count. */
+async function lobby() {
+  const a = browser(), b = browser(), c = browser();
   const g = await create(a, "Alice");
   const code = g.body.code;
   await b.post(`/api/games/${code}/join`, { nickname: "Bob" });
-  return { a, b, code };
+  await c.post(`/api/games/${code}/join`, { nickname: "Cara" });
+  return { a, b, c, code };
 }
 
-await test("only the host can start, and only with enough players", async () => {
+await test("a game below the minimum cannot start", async () => {
   const a = browser(), b = browser();
   const g = await create(a, "Alice");
-  const code = g.body.code;
-  const tooFew = await a.post(`/api/games/${code}/action`, { type: "start_game" });
-  assert.strictEqual(tooFew.status, 400);
-  await b.post(`/api/games/${code}/join`, { nickname: "Bob" });
+  await b.post(`/api/games/${g.body.code}/join`, { nickname: "Bob" });
+  const r = await a.post(`/api/games/${g.body.code}/action`, { type: "start_game" });
+  assert.strictEqual(r.status, 400, "2 players should not be enough by default");
+  assert.match(r.body.error, /at least/i);
+});
+
+await test("only the host can start", async () => {
+  const { a, b, code } = await lobby();
   const notHost = await b.post(`/api/games/${code}/action`, { type: "start_game" });
   assert.strictEqual(notHost.status, 400);
   const ok = await a.post(`/api/games/${code}/action`, { type: "start_game" });
   assert.strictEqual(ok.status, 200, JSON.stringify(ok.body));
 });
 
+await test("a started game cannot be started twice", async () => {
+  const { a, code } = await lobby();
+  await a.post(`/api/games/${code}/action`, { type: "start_game" });
+  const again = await a.post(`/api/games/${code}/action`, { type: "start_game" });
+  assert.strictEqual(again.status, 400);
+});
+
 await test("cannot join a game already under way", async () => {
-  const { a, code } = await twoPlayerGame();
+  const { a, code } = await lobby();
   await a.post(`/api/games/${code}/action`, { type: "start_game" });
   const late = browser();
   const r = await late.post(`/api/games/${code}/join`, { nickname: "Late" });
@@ -191,7 +204,7 @@ await test("cannot join a game already under way", async () => {
 console.log("\n--- event log and sync ---");
 
 await test("seq is gapless from 1", async () => {
-  const { a, b, code } = await twoPlayerGame();
+  const { a, b, code } = await lobby();
   await a.post(`/api/games/${code}/action`, { type: "start_game" });
   await a.post(`/api/games/${code}/chat`, { text: "one" });
   await b.post(`/api/games/${code}/chat`, { text: "two" });
@@ -202,7 +215,7 @@ await test("seq is gapless from 1", async () => {
 });
 
 await test("concurrent writers still produce a gapless log", async () => {
-  const { a, b, code } = await twoPlayerGame();
+  const { a, b, code } = await lobby();
   await Promise.all([
     ...Array.from({ length: 6 }, (_, i) => a.post(`/api/games/${code}/chat`, { text: `a${i}` })),
     ...Array.from({ length: 6 }, (_, i) => b.post(`/api/games/${code}/chat`, { text: `b${i}` })),
@@ -214,7 +227,7 @@ await test("concurrent writers still produce a gapless log", async () => {
 });
 
 await test("chat replays from the log after reload", async () => {
-  const { a, b, code } = await twoPlayerGame();
+  const { a, b, code } = await lobby();
   await a.post(`/api/games/${code}/chat`, { text: "hello" });
   const ev = await b.get(`/api/games/${code}/events?since=0`);
   const chat = ev.body.events.filter((e) => e.type === "chat");
@@ -223,7 +236,7 @@ await test("chat replays from the log after reload", async () => {
 });
 
 await test("events?since=N returns only newer events", async () => {
-  const { a, code } = await twoPlayerGame();
+  const { a, code } = await lobby();
   const all = await a.get(`/api/games/${code}/events?since=0`);
   const last = all.body.events.at(-1).seq;
   const none = await a.get(`/api/games/${code}/events?since=${last}`);
@@ -231,7 +244,7 @@ await test("events?since=N returns only newer events", async () => {
 });
 
 await test("a non-player cannot chat", async () => {
-  const { code } = await twoPlayerGame();
+  const { code } = await lobby();
   const stranger = browser();
   await stranger.get(`/api/games/${code}/state`); // mint a cookie
   const r = await stranger.post(`/api/games/${code}/chat`, { text: "hi" });
