@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useGameSync } from "@/lib/useGameSync";
+import { fetchJson } from "@/lib/fetch-json";
 import { ErrorPanel } from "@/lib/ui/ErrorPanel";
 import { Canvas } from "@/lib/ui/Canvas";
 import { Button, Plaque, penVar } from "@/lib/ui/primitives";
@@ -10,6 +11,7 @@ import { MIN_PLAYERS, currentDrawer, currentPass, PASSES } from "@/lib/game/type
 import { Roster } from "./Roster";
 import { Chat } from "./Chat";
 import { StatusBoard } from "./StatusBoard";
+import { Wordmark } from "@/lib/ui/Wordmark";
 import { PhasePanel } from "./PhasePanel";
 
 /** Phases whose panel is the point of the screen, not an aside to it. */
@@ -20,18 +22,21 @@ export default function GameView({ code }: { code: string }) {
   const { sync } = g;
   const [highlight, setHighlight] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
 
-  async function act(body: unknown) {
+  /** Returns an error string so callers can show it next to their button. */
+  async function act(body: unknown): Promise<string | null> {
     setActionError(null);
-    const res = await fetch(`/api/games/${code.toUpperCase()}/action`, {
+    const res = await fetchJson(`/api/games/${code.toUpperCase()}/action`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
     if (!res.ok) {
-      const d = await res.json().catch(() => ({}));
-      setActionError(d.error ?? "Action failed");
+      setActionError(res.error);
+      return res.error;
     }
+    return null;
   }
 
   if (sync.error && !sync.ready) {
@@ -48,7 +53,25 @@ export default function GameView({ code }: { code: string }) {
       />
     );
   }
-  if (!sync.ready) return <main className="p-8 text-label-500">Loading {code.toUpperCase()}…</main>;
+  if (!sync.ready) {
+    // Same shape as the loaded page, so nothing jumps when it arrives.
+    return (
+      <main className="mx-auto max-w-6xl px-5 py-8">
+        <Wordmark />
+        <div className="mt-5 animate-pulse space-y-6">
+          <div className="h-24 rounded-sm border border-wall-500 bg-wall-700" />
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="aspect-square w-full max-w-[34rem] rounded-sm bg-wall-700" />
+            <div className="space-y-5">
+              <div className="h-40 rounded-sm border border-wall-500 bg-wall-700" />
+              <div className="h-56 rounded-sm border border-wall-500 bg-wall-700" />
+            </div>
+          </div>
+        </div>
+        <p className="sr-only">Loading room {code.toUpperCase()}…</p>
+      </main>
+    );
+  }
 
   const { state } = sync;
   const isHost = sync.you === sync.hostId;
@@ -59,6 +82,9 @@ export default function GameView({ code }: { code: string }) {
   return (
     <main className="mx-auto max-w-6xl px-5 py-8">
 
+      <div className="mb-5">
+        <Wordmark />
+      </div>
       <div className="mb-6">
         <StatusBoard sync={sync} code={code.toUpperCase()} />
       </div>
@@ -89,10 +115,14 @@ export default function GameView({ code }: { code: string }) {
                   <Button
                     variant="primary"
                     className="mt-5"
-                    disabled={sync.players.length < MIN_PLAYERS}
-                    onClick={() => act({ type: "start_match" })}
+                    disabled={sync.players.length < MIN_PLAYERS || starting}
+                    onClick={async () => {
+                      setStarting(true);
+                      await act({ type: "start_match" });
+                      setStarting(false);
+                    }}
                   >
-                    Start the match
+                    {starting ? "Dealing roles…" : "Start the match"}
                   </Button>
                 ) : (
                   <p className="mt-5 text-sm text-label-500">

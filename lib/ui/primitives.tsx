@@ -19,11 +19,34 @@ export function Button({
   variant = "secondary",
   size = "md",
   className,
+  href,
+  asChild,
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: ButtonVariant;
   size?: "sm" | "md";
+  /** Render as a link, for navigation that happens to look like a button. */
+  href?: string;
+  asChild?: boolean;
 }) {
+  const classes = clsx(
+    "inline-flex items-center justify-center gap-2 rounded-sm font-medium",
+    "transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40",
+    size === "sm" ? "px-3 py-1.5 text-[13px]" : "px-4 py-2 text-sm",
+    variant === "primary" && "bg-accent-500 text-wall-950 hover:bg-accent-400 active:bg-accent-600",
+    variant === "secondary" &&
+      "border border-wall-500 bg-wall-700 text-label-100 hover:border-wall-400 hover:bg-wall-600",
+    variant === "ghost" && "text-label-300 hover:bg-wall-700 hover:text-label-100",
+    variant === "danger" && "border border-danger/40 bg-transparent text-danger hover:bg-danger/10",
+    className,
+  );
+  if (href) {
+    return (
+      <a href={href} className={classes}>
+        {props.children}
+      </a>
+    );
+  }
   return (
     <button
       className={clsx(

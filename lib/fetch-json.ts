@@ -1,5 +1,7 @@
 "use client";
 
+import { reportRequestFailed, reportRequestSucceeded } from "./ui/connection";
+
 export type FetchResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: string; status: number | null; requestId?: string };
@@ -27,6 +29,9 @@ export async function fetchJson<T>(
     res = await fetch(url, { ...rest, signal: ctrl.signal });
   } catch (err) {
     clearTimeout(timer);
+    // A transport failure is what "the server is unreachable" actually means;
+    // an HTTP error response proves the server is alive and answering.
+    reportRequestFailed();
     if (err instanceof DOMException && err.name === "AbortError")
       return { ok: false, error: `Request timed out after ${timeoutMs / 1000}s.`, status: null };
     return {
@@ -36,6 +41,7 @@ export async function fetchJson<T>(
     };
   }
   clearTimeout(timer);
+  reportRequestSucceeded();
 
   const text = await res.text().catch(() => "");
 

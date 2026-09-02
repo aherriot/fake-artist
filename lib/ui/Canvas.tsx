@@ -37,7 +37,8 @@ export function Canvas({
   strokes: Stroke[];
   canDraw: boolean;
   yourSeat: number;
-  onSubmit: (points: [number, number][]) => void | Promise<unknown>;
+  /** Resolves to an error string, or null when the line was accepted. */
+  onSubmit: (points: [number, number][]) => Promise<string | null | void>;
   /** Dim everything except this player's lines. */
   highlightPlayerId?: string | null;
   showSeatTags?: boolean;
@@ -48,6 +49,7 @@ export function Canvas({
   const [draft, setDraft] = useState<[number, number][]>([]);
   const [drawing, setDrawing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const pointFrom = useCallback((e: React.PointerEvent): [number, number] | null => {
     const el = svgRef.current;
@@ -90,8 +92,15 @@ export function Canvas({
   const submit = async () => {
     if (draft.length < 2) return;
     setBusy(true);
-    await onSubmit(draft);
+    setError(null);
+    const err = await onSubmit(draft);
     setBusy(false);
+    if (typeof err === "string" && err) {
+      // Keep the line. Losing someone's drawing because the network hiccuped
+      // would be far worse than showing it again with a retry.
+      setError(err);
+      return;
+    }
     setDraft([]);
   };
 
@@ -201,6 +210,13 @@ export function Canvas({
               : "Draw one continuous line without lifting the pointer."}
           </p>
         </div>
+      )}
+
+      {error && (
+        <p role="alert" className="mt-2 text-sm text-danger">
+          {error}{" "}
+          <span className="text-label-500">Your line is still here — try again.</span>
+        </p>
       )}
     </div>
   );

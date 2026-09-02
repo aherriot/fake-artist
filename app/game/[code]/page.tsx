@@ -4,6 +4,8 @@ import { use, useCallback, useEffect, useState } from "react";
 import GameView from "./GameView";
 import { fetchJson } from "@/lib/fetch-json";
 import { ErrorPanel } from "@/lib/ui/ErrorPanel";
+import { Button, Field, Plaque } from "@/lib/ui/primitives";
+import { Wordmark } from "@/lib/ui/Wordmark";
 import type { Snapshot } from "@/lib/game/types";
 
 type Gate =
@@ -66,6 +68,10 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
   }, [check]);
 
   async function join() {
+    if (!nickname.trim()) {
+      setJoinError("Enter a name so the room knows who you are.");
+      return;
+    }
     setBusy(true);
     setJoinError(null);
     const res = await fetchJson<{ ok: boolean }>(`/api/games/${upper}/join`, {
@@ -81,7 +87,18 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
     setGate({ kind: "member" });
   }
 
-  if (gate.kind === "checking") return <main>Loading {upper}...</main>;
+  if (gate.kind === "checking") {
+    return (
+      <main className="mx-auto max-w-lg px-6 py-16">
+        <Wordmark />
+        <div className="mt-10 animate-pulse space-y-4">
+          <div className="h-8 w-2/3 rounded-sm bg-wall-700" />
+          <div className="h-40 rounded-sm border border-wall-500 bg-wall-700" />
+        </div>
+        <p className="sr-only">Checking room {upper}…</p>
+      </main>
+    );
+  }
 
   if (gate.kind === "missing") {
     return (
@@ -113,74 +130,66 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
   }
 
   if (gate.kind === "stranger") {
-    // A game already under way cannot take new players; say so plainly
-    // rather than letting the join attempt fail after they type a name.
     const closed = gate.status !== "lobby";
     return (
-      <main style={{ maxWidth: 420 }}>
-        <h1>
-          Join <span style={{ letterSpacing: 4 }}>{upper}</span>
-        </h1>
-        {closed ? (
-          <>
-            <p style={{ color: "#f66" }}>
-              This game is already {gate.status} and is not accepting new players.
-            </p>
-            <a href="/" style={{ color: "#6af" }}>
-              Start your own game
-            </a>
-          </>
-        ) : (
-          <>
-            <p style={{ color: "#888" }}>
-              {gate.players} player{gate.players === 1 ? "" : "s"} waiting. Pick a
-              nickname to join.
-            </p>
-            <label style={{ display: "block", marginTop: 16 }}>
-              Nickname
-              <input
-                autoFocus
-                value={nickname}
-                onChange={(e) => setNickname(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && nickname.trim() && !busy && join()}
-                maxLength={24}
-                placeholder="e.g. Hammer"
-                style={{
-                  display: "block",
-                  width: "100%",
-                  padding: 8,
-                  marginTop: 4,
-                  fontSize: 16,
-                  fontFamily: "inherit",
-                  background: "#000",
-                  color: "#eee",
-                  border: "1px solid #444",
-                }}
-              />
-            </label>
-            <button
-              onClick={join}
-              disabled={!nickname.trim() || busy}
-              style={{
-                marginTop: 12,
-                padding: "8px 16px",
-                fontSize: 16,
-                fontFamily: "inherit",
-                cursor: "pointer",
-                background: "#222",
-                color: "#eee",
-                border: "1px solid #555",
-              }}
-            >
-              {busy ? "Joining..." : "Join game"}
-            </button>
-            {joinError && (
-              <p style={{ color: "#f66" }} role="alert">
-                {joinError}
+      <main className="mx-auto max-w-lg px-6 py-16">
+        <Wordmark size="full" asLink={false} />
+
+        <Plaque className="mt-10">
+          <p className="catalogue-no">You have been invited to</p>
+          <p className="mt-1 font-mono text-3xl tracking-[0.3em]">{upper}</p>
+
+          {closed ? (
+            <>
+              <p className="mt-5 text-sm text-danger">
+                This match is already {gate.status} and cannot take new players.
               </p>
-            )}
-          </>
-        )}
+              <p className="mt-2 text-sm text-label-500">
+                Ask the host for a new room, or start your own.
+              </p>
+              <Button variant="primary" href="/" className="mt-5" asChild>
+                Start a room
+              </Button>
+            </>
+          ) : (
+            <>
+              <p className="mt-4 text-sm text-label-300">
+                {gate.players} {gate.players === 1 ? "player is" : "players are"} waiting.
+                Everyone draws one line of the same picture — except one of you, who has not
+                been told what it is.
+              </p>
+              <div className="mt-6">
+                <Field
+                  label="Your name"
+                  required
+                  autoFocus
+                  value={nickname}
+                  maxLength={24}
+                  placeholder="e.g. Hopper"
+                  error={joinError}
+                  hint="Everyone in the room will see this."
+                  onChange={(e) => {
+                    setNickname(e.target.value);
+                    if (joinError) setJoinError(null);
+                  }}
+                  onKeyDown={(e) => e.key === "Enter" && !busy && join()}
+                />
+              </div>
+              <Button
+                variant="primary"
+                onClick={join}
+                disabled={busy}
+                className="mt-4 w-full justify-center"
+              >
+                {busy ? "Joining…" : "Join the room"}
+              </Button>
+            </>
+          )}
+        </Plaque>
+
+        <p className="mt-6 text-xs text-label-500">
+          No account needed. Your name is stored only for this game.
+        </p>
       </main>
     );
   }

@@ -4,6 +4,7 @@ import { clsx } from "clsx";
 import type { SyncState } from "@/lib/useGameSync";
 import { turnStatus } from "@/lib/game/status";
 import { currentPass, PASSES } from "@/lib/game/types";
+import { useServerUnreachable } from "@/lib/ui/connection";
 
 /**
  * One board above the artwork answering both questions at once:
@@ -25,6 +26,11 @@ export function StatusBoard({ sync, code }: { sync: SyncState; code: string }) {
     ready: sync.pending.ready,
     voted: sync.pending.voted,
   });
+  // Pusher can still be "live" while the API is unreachable -- they are
+  // different services. Showing "live" beside a "can't reach the server"
+  // banner reads as a contradiction, so the worse of the two wins.
+  const serverDown = useServerUnreachable();
+  const conn = serverDown ? "offline" : sync.conn;
   const priv = sync.privateState;
   const fake = priv?.role === "fake";
   const inRound = state.phase !== "lobby" && state.phase !== "complete";
@@ -53,7 +59,7 @@ export function StatusBoard({ sync, code }: { sync: SyncState; code: string }) {
         <span className="label-caps">{PHASE_LABEL[state.phase] ?? state.phase}</span>
         <span className="ml-auto flex items-center gap-3 text-label-700">
           <span>
-            <span style={{ color: connColor(sync.conn) }}>●</span> {sync.conn}
+            <span style={{ color: connColor(conn) }}>●</span> {conn}
           </span>
           <span>seq {sync.lastSeq}</span>
         </span>
@@ -123,4 +129,10 @@ const PHASE_LABEL: Record<string, string> = {
 };
 
 const connColor = (c: string) =>
-  c === "live" ? "#34c98b" : c === "error" ? "#ff5c5c" : c === "polling" ? "#56b4e9" : "#e0a020";
+  c === "live"
+    ? "#34c98b"
+    : c === "error" || c === "offline"
+      ? "#ff5c5c"
+      : c === "polling"
+        ? "#56b4e9"
+        : "#e0a020";

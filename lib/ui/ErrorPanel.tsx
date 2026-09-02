@@ -1,5 +1,7 @@
 "use client";
 
+import { Wordmark } from "./Wordmark";
+
 export interface Action {
   label: string;
   onClick?: () => void;
@@ -32,8 +34,9 @@ export function ErrorPanel({
   detail?: string;
 }) {
   return (
-    <main style={{ maxWidth: 560 }} role="alert">
-      <h1 style={{ marginBottom: 8 }}>{title}</h1>
+    <main className="mx-auto max-w-xl px-6 py-12" role="alert">
+      <Wordmark />
+      <h1 className="mt-10 font-display text-4xl" style={{ marginBottom: 8 }}>{title}</h1>
       <p style={{ color: "#ccc", marginTop: 0 }}>{message}</p>
       {hint && <p style={{ color: "#888", fontSize: 14 }}>{hint}</p>}
 

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { fetchJson } from "@/lib/fetch-json";
 import { Button, Field, Plaque } from "@/lib/ui/primitives";
+import { Wordmark } from "@/lib/ui/Wordmark";
 
 /** The join-code alphabet: no O, I, 0 or 1, so codes survive being read aloud. */
 const CODE_ALPHABET = /[^ABCDEFGHJKLMNPQRSTUVWXYZ23456789]/g;
@@ -82,11 +83,7 @@ export default function Home() {
   return (
     <main className="mx-auto max-w-lg px-6 py-16 sm:py-24">
       <header className="mb-10">
-        <h1 className="font-display text-5xl leading-[1.05] sm:text-6xl">
-          A Fake Artist
-          <br />
-          Goes to New York
-        </h1>
+        <Wordmark size="full" asLink={false} />
         <p className="mt-5 max-w-md text-label-300">
           Everyone draws one line of the same picture. One of you has not been told
           what it is — and is trying not to look like it.

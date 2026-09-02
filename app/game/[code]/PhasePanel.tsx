@@ -3,166 +3,170 @@
 import { useState } from "react";
 import type { useGameSync } from "@/lib/useGameSync";
 import { Button, Plaque, penVar } from "@/lib/ui/primitives";
+import { useAction } from "@/lib/ui/useAction";
 import { hasVoted, isReady } from "@/lib/game/optimistic";
 import { clsx } from "clsx";
 
+type Game = ReturnType<typeof useGameSync>;
+type Act = (body: unknown) => Promise<string | null | void>;
+
 /**
- * What the room is being asked to do right now.
+ * The controls for the current phase.
  *
- * Every phase advances on participation rather than a clock, so each panel's
- * job is to say plainly who is still holding things up.
+ * Each phase is its own component so it can own its pending and error state --
+ * a switch cannot call hooks. The headline and the "waiting on whom" line live
+ * in the status board; what is left here is only what you can press, and what
+ * happened when you pressed it.
  */
-export function PhasePanel({
-  game,
-  act,
-  isHost,
-}: {
-  game: ReturnType<typeof useGameSync>;
-  act: (body: unknown) => Promise<void>;
-  isHost: boolean;
-}) {
-  const { sync } = game;
-  const { state } = sync;
-  const nameOf = (id: string) => sync.players.find((p) => p.id === id)?.nickname ?? "someone";
-  const seatOf = (id: string) => sync.players.find((p) => p.id === id)?.seat ?? 0;
-
-  switch (state.phase) {
+export function PhasePanel({ game, act, isHost }: { game: Game; act: Act; isHost: boolean }) {
+  switch (game.sync.state.phase) {
     case "drawing":
-      return <DrawingPanel game={game} act={act} isHost={isHost} nameOf={nameOf} />;
-
-    case "discussion": {
-      const ready = isReady(state, sync.pending, sync.you);
-      const waiting = sync.players.filter((p) => !state.ready.includes(p.id));
-      return (
-        <Plaque>
-          <div className="flex flex-wrap items-center gap-3">
-            <Button variant={ready ? "secondary" : "primary"} disabled={ready} onClick={() => act({ type: "ready" })}>
-              {ready ? "Ready — waiting for others" : "Ready to vote"}
-            </Button>
-            <span className="text-xs text-label-500">
-              {state.ready.length} of {sync.players.length} ready
-              {waiting.length > 0 && waiting.length <= 3 && (
-                <> — waiting on {waiting.map((p) => p.nickname).join(", ")}</>
-              )}
-            </span>
-            {isHost && (
-              <Button size="sm" variant="ghost" onClick={() => act({ type: "open_voting" })}>
-                Open voting now
-              </Button>
-            )}
-          </div>
-        </Plaque>
-      );
-    }
-
+      return <DrawingPanel game={game} act={act} isHost={isHost} />;
+    case "discussion":
+      return <DiscussionPanel game={game} act={act} isHost={isHost} />;
     case "voting":
-    case "runoff": {
-      const voted = hasVoted(state, sync.pending, sync.you);
-      const candidates =
-        state.phase === "runoff" && state.runoffCandidates.length > 0
-          ? sync.players.filter((p) => state.runoffCandidates.includes(p.id))
-          : sync.players;
-      return (
-        <Plaque>
-          <p className="label-caps">
-            {voted ? "Your vote is in" : "Choose"}
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {candidates
-              .filter((p) => p.id !== sync.you)
-              .map((p) => (
-                <button
-                  key={p.id}
-                  disabled={voted}
-                  onClick={() => game.castVote(p.id)}
-                  className={clsx(
-                    "flex items-center gap-2 rounded-sm border px-3 py-2 text-sm transition-colors",
-                    voted
-                      ? "cursor-not-allowed border-wall-500 opacity-40"
-                      : "border-wall-500 bg-wall-900 hover:border-accent-500",
-                  )}
-                >
-                  <span
-                    aria-hidden
-                    className="grid size-5 place-items-center rounded-[2px] font-mono text-[10px] text-wall-950"
-                    style={{ background: penVar(p.seat + 1) }}
-                  >
-                    {p.seat + 1}
-                  </span>
-                  {p.nickname}
-                </button>
-              ))}
-          </div>
-          <p className="mt-3 text-xs text-label-500">
-            {state.voted.length} of {sync.players.length} voted
-          </p>
-        </Plaque>
-      );
-    }
-
+    case "runoff":
+      return <VotePanel game={game} />;
     case "guess":
       return <GuessPanel game={game} />;
-
     case "guess_vote":
       return <GuessVotePanel game={game} />;
-
     case "reveal":
     case "complete":
-      return <RevealPanel game={game} act={act} isHost={isHost} nameOf={nameOf} seatOf={seatOf} />;
-
+      return <RevealPanel game={game} act={act} isHost={isHost} />;
     default:
       return null;
   }
 }
 
-function DrawingPanel({
-  game, act, isHost, nameOf,
-}: {
-  game: ReturnType<typeof useGameSync>;
-  act: (b: unknown) => Promise<void>;
-  isHost: boolean;
-  nameOf: (id: string) => string;
-}) {
+/** Shown to the host only: the escape hatch for a player who has wandered off. */
+function DrawingPanel({ game, act, isHost }: { game: Game; act: Act; isHost: boolean }) {
   const { sync } = game;
-  const drawer = sync.state.seatOrder[sync.state.turnIndex % Math.max(1, sync.state.seatOrder.length)];
-  // The status board already says whose turn it is; all that is left here is
-  // the host's escape hatch for a player who has wandered off.
+  const skip = useAction(async () => act({ type: "skip_turn" }));
+  const seats = sync.state.seatOrder;
+  const drawer = seats[sync.state.turnIndex % Math.max(1, seats.length)];
+  const name = sync.players.find((p) => p.id === drawer)?.nickname ?? "they";
   if (drawer === sync.you || !isHost) return null;
   return (
     <Plaque className="flex flex-wrap items-center justify-between gap-3">
-      <p className="text-sm text-label-500">
-        {nameOf(drawer)} is holding things up?
-      </p>
-      <Button size="sm" variant="ghost" onClick={() => act({ type: "skip_turn" })}>
-        Skip their turn
+      <div>
+        <p className="text-sm text-label-500">Is {name} holding things up?</p>
+        {skip.error && <p role="alert" className="mt-1 text-sm text-danger">{skip.error}</p>}
+      </div>
+      <Button size="sm" variant="ghost" disabled={skip.pending} onClick={() => skip.run()}>
+        {skip.pending ? "Skipping…" : "Skip their turn"}
       </Button>
     </Plaque>
   );
 }
 
-function GuessPanel({ game }: { game: ReturnType<typeof useGameSync> }) {
+function DiscussionPanel({ game, act, isHost }: { game: Game; act: Act; isHost: boolean }) {
+  const { sync } = game;
+  const ready = isReady(sync.state, sync.pending, sync.you);
+  const markReady = useAction(game.setReady);
+  const open = useAction(async () => act({ type: "open_voting" }));
+  return (
+    <Plaque>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button
+          variant={ready ? "secondary" : "primary"}
+          disabled={ready || markReady.pending}
+          onClick={() => markReady.run()}
+        >
+          {markReady.pending ? "Sending…" : ready ? "You are ready" : "Ready to vote"}
+        </Button>
+        <span className="text-xs text-label-500">
+          {sync.state.ready.length} of {sync.players.length} ready
+        </span>
+        {isHost && (
+          <Button size="sm" variant="ghost" disabled={open.pending} onClick={() => open.run()}>
+            {open.pending ? "Opening…" : "Open voting now"}
+          </Button>
+        )}
+      </div>
+      {(markReady.error || open.error) && (
+        <p role="alert" className="mt-3 text-sm text-danger">{markReady.error ?? open.error}</p>
+      )}
+    </Plaque>
+  );
+}
+
+function VotePanel({ game }: { game: Game }) {
+  const { sync } = game;
+  const { state } = sync;
+  const voted = hasVoted(state, sync.pending, sync.you);
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const cast = useAction(async (id: string) => game.castVote(id));
+
+  const candidates =
+    state.phase === "runoff" && state.runoffCandidates.length > 0
+      ? sync.players.filter((p) => state.runoffCandidates.includes(p.id))
+      : sync.players;
+
+  return (
+    <Plaque>
+      <p className="label-caps">{voted ? "Your vote is in" : "Choose"}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {candidates
+          .filter((p) => p.id !== sync.you)
+          .map((p) => (
+            <button
+              key={p.id}
+              disabled={voted || cast.pending}
+              onClick={async () => {
+                setPendingId(p.id);
+                await cast.run(p.id);
+                setPendingId(null);
+              }}
+              className={clsx(
+                "flex items-center gap-2 rounded-sm border px-3 py-2 text-sm transition-colors",
+                voted || cast.pending
+                  ? "cursor-not-allowed border-wall-500 opacity-40"
+                  : "border-wall-500 bg-wall-900 hover:border-accent-500",
+                pendingId === p.id && "border-accent-500",
+              )}
+            >
+              <span
+                aria-hidden
+                className="grid size-5 place-items-center rounded-[2px] font-mono text-[10px] text-wall-950"
+                style={{ background: penVar(p.seat + 1) }}
+              >
+                {p.seat + 1}
+              </span>
+              {p.nickname}
+              {pendingId === p.id && cast.pending && (
+                <span className="text-xs text-label-500">…</span>
+              )}
+            </button>
+          ))}
+      </div>
+      {cast.error && <p role="alert" className="mt-3 text-sm text-danger">{cast.error}</p>}
+      <p className="mt-3 text-xs text-label-500">
+        {state.voted.length} of {sync.players.length} voted
+      </p>
+    </Plaque>
+  );
+}
+
+function GuessPanel({ game }: { game: Game }) {
   const { sync } = game;
   const [guess, setGuess] = useState("");
-  const [err, setErr] = useState<string | null>(null);
-  const mine = sync.state.accusedId === sync.you;
-
-  async function submit() {
-    setErr(null);
+  const submit = useAction(async () => {
     const res = await fetch(`/api/games/${sync.code}/guess`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ guess }),
-    });
-    if (!res.ok) setErr((await res.json().catch(() => ({}))).error ?? "Could not submit");
-  }
+    }).catch(() => null);
+    if (!res) return "Could not reach the server. Your guess was not sent.";
+    if (!res.ok) return (await res.json().catch(() => ({}))).error ?? "Could not submit";
+    return null;
+  });
 
-  if (!mine) {
+  if (sync.state.accusedId !== sync.you) {
     return (
       <Plaque>
-        <p className="label-caps">Caught</p>
-        <p className="mt-2 text-sm text-label-300">
-          The room found the fake artist. They get one guess at the subject — if they get it,
-          they still win.
+        <p className="text-sm text-label-300">
+          They get one guess at the subject. If they get it, they still win the round.
         </p>
       </Plaque>
     );
@@ -175,54 +179,64 @@ function GuessPanel({ game }: { game: ReturnType<typeof useGameSync> }) {
           autoFocus
           value={guess}
           onChange={(e) => setGuess(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && submit()}
+          onKeyDown={(e) => e.key === "Enter" && guess.trim() && submit.run()}
           placeholder="What were they drawing?"
           maxLength={80}
           aria-label="Your guess"
           className="min-w-0 flex-1 rounded-sm border border-wall-500 bg-wall-900 px-3 py-2 text-sm focus:border-accent-500 focus:outline-none"
         />
-        <Button variant="primary" onClick={submit} disabled={!guess.trim()}>
-          Guess
+        <Button variant="primary" onClick={() => submit.run()} disabled={!guess.trim() || submit.pending}>
+          {submit.pending ? "Sending…" : "Guess"}
         </Button>
       </div>
-      {err && <p role="alert" className="mt-2 text-sm text-danger">{err}</p>}
+      {submit.error && <p role="alert" className="mt-2 text-sm text-danger">{submit.error}</p>}
     </Plaque>
   );
 }
 
-function GuessVotePanel({ game }: { game: ReturnType<typeof useGameSync> }) {
+function GuessVotePanel({ game }: { game: Game }) {
   const { sync } = game;
-  const [sent, setSent] = useState(false);
+  const [choice, setChoice] = useState<boolean | null>(null);
   const fake = sync.privateState?.role === "fake";
-
-  async function vote(accept: boolean) {
-    setSent(true);
+  const vote = useAction(async (accept: boolean) => {
     const res = await fetch(`/api/games/${sync.code}/guess-vote`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ accept }),
-    });
-    if (!res.ok) setSent(false);
-  }
+    }).catch(() => null);
+    if (!res) return "Could not reach the server. Your judgement was not sent.";
+    if (!res.ok) return (await res.json().catch(() => ({}))).error ?? "Could not vote";
+    return null;
+  });
+  const done = sync.you !== null && sync.state.guessVoted.includes(sync.you);
 
   return (
     <Plaque>
       <p className="label-caps">They guessed</p>
-      <p className="mt-2 font-display text-3xl">“{sync.state.guess}”</p>
+      <p className="mt-2 font-display text-3xl">&ldquo;{sync.state.guess}&rdquo;</p>
       {fake ? (
         <p className="mt-3 text-sm text-label-500">
-          You guessed. The others decide whether it counts — you do not get a say in that.
+          You do not get a say in whether your own guess counts.
         </p>
       ) : (
         <>
           <div className="mt-4 flex gap-2">
-            <Button variant="secondary" disabled={sent} onClick={() => vote(true)}>
-              That counts
+            <Button
+              variant="secondary"
+              disabled={done || vote.pending}
+              onClick={async () => { setChoice(true); await vote.run(true); }}
+            >
+              {vote.pending && choice === true ? "Sending…" : "That counts"}
             </Button>
-            <Button variant="danger" disabled={sent} onClick={() => vote(false)}>
-              No, that&apos;s wrong
+            <Button
+              variant="danger"
+              disabled={done || vote.pending}
+              onClick={async () => { setChoice(false); await vote.run(false); }}
+            >
+              {vote.pending && choice === false ? "Sending…" : "No, that's wrong"}
             </Button>
           </div>
+          {vote.error && <p role="alert" className="mt-3 text-sm text-danger">{vote.error}</p>}
           <p className="mt-3 text-xs text-label-500">
             {sync.state.guessVoted.length} of {sync.players.length - 1} judged
           </p>
@@ -232,21 +246,16 @@ function GuessVotePanel({ game }: { game: ReturnType<typeof useGameSync> }) {
   );
 }
 
-function RevealPanel({
-  game, act, isHost, nameOf, seatOf,
-}: {
-  game: ReturnType<typeof useGameSync>;
-  act: (b: unknown) => Promise<void>;
-  isHost: boolean;
-  nameOf: (id: string) => string;
-  seatOf: (id: string) => number;
-}) {
+function RevealPanel({ game, act, isHost }: { game: Game; act: Act; isHost: boolean }) {
   const { sync } = game;
   const { state } = sync;
+  const next = useAction(async () => act({ type: "next_round" }));
   const r = state.results[state.results.length - 1];
   const done = state.phase === "complete";
   if (!r) return null;
 
+  const nameOf = (id: string) => sync.players.find((p) => p.id === id)?.nickname ?? "someone";
+  const seatOf = (id: string) => sync.players.find((p) => p.id === id)?.seat ?? 0;
   const fakeWon = r.winners.includes(r.fakeArtistId);
   const ranked = [...sync.players].sort(
     (a, b) => (state.scores[b.id] ?? 0) - (state.scores[a.id] ?? 0),
@@ -259,8 +268,8 @@ function RevealPanel({
         The subject was <span className="text-accent-400">{r.topic}</span>
       </p>
       <p className="mt-2 text-sm text-label-300">
-        <b style={{ color: penVar(seatOf(r.fakeArtistId) + 1) }}>{nameOf(r.fakeArtistId)}</b>{" "}
-        was the fake artist.{" "}
+        <b style={{ color: penVar(seatOf(r.fakeArtistId) + 1) }}>{nameOf(r.fakeArtistId)}</b> was
+        the fake artist.{" "}
         {r.caught
           ? r.guessAccepted
             ? `Caught — but guessed "${r.guess}" and got away with it.`
@@ -296,17 +305,24 @@ function RevealPanel({
       </ol>
 
       {!done && isHost && (
-        <Button variant="primary" className="mt-5" onClick={() => act({ type: "next_round" })}>
-          {state.round >= state.totalRounds ? "Finish the match" : "Next round"}
-        </Button>
-      )}
-      {!done && !isHost && (
-        <p className="mt-5 text-sm text-label-500">Waiting for the host to continue…</p>
+        <>
+          <Button
+            variant="primary"
+            className="mt-5"
+            disabled={next.pending}
+            onClick={() => next.run()}
+          >
+            {next.pending
+              ? "Starting…"
+              : state.round >= state.totalRounds
+                ? "Finish the match"
+                : "Next round"}
+          </Button>
+          {next.error && <p role="alert" className="mt-2 text-sm text-danger">{next.error}</p>}
+        </>
       )}
       {done && (
-        <p className="mt-5 font-display text-2xl">
-          {ranked[0]?.nickname} wins the match.
-        </p>
+        <p className="mt-5 font-display text-2xl">{ranked[0]?.nickname} wins the match.</p>
       )}
     </Plaque>
   );
