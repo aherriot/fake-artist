@@ -10,7 +10,7 @@ import type { DraftEvent, GameAction } from "@/lib/game/types";
 
 // Next.js requires these to be literal exports in the route file itself --
 // re-exporting them from a shared module is silently ignored.
-export const preferredRegion = "iad1";
+export const preferredRegion = "cle1";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 

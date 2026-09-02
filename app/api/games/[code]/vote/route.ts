@@ -7,7 +7,7 @@ import { broadcastAll } from "@/lib/pusher-server";
 import { validateVote } from "@/lib/game/reduce";
 import type { DraftEvent, PrivateState } from "@/lib/game/types";
 
-export const preferredRegion = "iad1";
+export const preferredRegion = "cle1";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 

@@ -5,7 +5,7 @@ import { mutate } from "@/lib/game/mutate";
 import { readPrivateRows } from "@/lib/game/rounds";
 import { broadcastAll } from "@/lib/pusher-server";
 
-export const preferredRegion = "iad1";
+export const preferredRegion = "cle1";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 

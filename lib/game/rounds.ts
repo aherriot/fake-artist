@@ -56,7 +56,9 @@ export async function openRound(
   round: number,
   rng: () => number = Math.random,
 ): Promise<DraftEvent> {
-  const pair = pickPair(state.usedTopics, rng);
+  // Used categories come from past results, so no extra state is needed --
+  // and a category is only "used" once its round has actually been revealed.
+  const pair = pickPair(state.usedTopics, state.results.map((r) => r.category), rng);
   const fakeArtistId = pickFakeArtist(state.seatOrder, state.hasBeenFake, rng);
 
   await initPrivateState(

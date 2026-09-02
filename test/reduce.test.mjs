@@ -245,4 +245,50 @@ assert.strictEqual(cleared.voted, false);
 assert.strictEqual(cleared.chat.length, 1, "chat spans rounds");
 ok("a new round clears per-round predictions but keeps chat");
 
+
+// --- the word list ----------------------------------------------------------
+const { CATEGORIES, WORD_PAIRS, pickPair, MIN_TOPICS_PER_CATEGORY } =
+  await import("../.test-build/words.js");
+
+// The property the whole design rests on: knowing the public category must not
+// tell you the secret topic. A category with one topic hands over the answer.
+for (const c of CATEGORIES) {
+  assert.ok(
+    c.topics.length >= MIN_TOPICS_PER_CATEGORY,
+    `"${c.category}" has only ${c.topics.length} topics; the category would narrow the answer too far`,
+  );
+  assert.strictEqual(new Set(c.topics).size, c.topics.length, `"${c.category}" repeats a topic`);
+}
+ok(`every category offers at least ${MIN_TOPICS_PER_CATEGORY} topics`);
+
+// Topics recur across categories, so the mapping cannot be memorised either way.
+const catsOf = new Map();
+for (const c of CATEGORIES) for (const t of c.topics) catsOf.set(t, (catsOf.get(t) ?? 0) + 1);
+assert.ok([...catsOf.values()].filter((n) => n > 1).length >= 10,
+  "too few topics appear under more than one category; the reverse mapping is learnable");
+ok("topics recur across categories, so the mapping is many-to-many");
+
+// Never repeat a topic while unused ones remain.
+const seen = [];
+const cats = [];
+for (let i = 0; i < 40; i++) {
+  const p = pickPair(seen, cats);
+  assert.ok(!seen.includes(p.topic), `pickPair repeated "${p.topic}" after ${i} rounds`);
+  seen.push(p.topic);
+  cats.push(p.category);
+}
+ok("40 consecutive rounds never repeat a topic");
+
+// Prefers a fresh category, for variety within a match.
+const used = CATEGORIES.slice(0, CATEGORIES.length - 1).map((c) => c.category);
+assert.strictEqual(pickPair([], used).category, CATEGORIES[CATEGORIES.length - 1].category,
+  "should pick the one unused category");
+ok("pickPair prefers a category the match has not used");
+
+// Degrades rather than failing once everything is exhausted.
+const all = WORD_PAIRS.map((p) => p.topic);
+const exhausted = pickPair(all, CATEGORIES.map((c) => c.category));
+assert.ok(exhausted.topic && exhausted.category, "must still return a pair when exhausted");
+ok("an exhausted list falls back instead of failing a long match");
+
 console.log(`\nAll ${n} state-machine invariants hold.`);

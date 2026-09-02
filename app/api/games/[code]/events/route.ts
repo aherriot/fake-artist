@@ -8,8 +8,8 @@ import type { GameEvent } from "@/lib/game/types";
 // re-exporting them from a shared module is silently ignored.
 // preferredRegion pins the function to the Neon region so a distant player
 // pays the cross-continent hop once, not twice. Change all at once with:
-//   grep -rl 'preferredRegion' app | xargs sed -i '' 's/"iad1"/"fra1"/'
-export const preferredRegion = "iad1";
+//   grep -rl 'preferredRegion' app | xargs sed -i '' 's/"cle1"/"fra1"/'
+export const preferredRegion = "cle1";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
