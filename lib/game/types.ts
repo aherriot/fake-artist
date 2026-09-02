@@ -75,9 +75,10 @@ export interface GameState {
   accusedId: string | null;
   guess: string | null;
   guessVoted: string[];
-  /** Players already the Fake Artist. Added at REVEAL, never at round start,
-   *  which would leak the current round's Fake Artist immediately. */
-  hasBeenFake: string[];
+  /** Who was the Fake Artist, one entry per completed round, in order; a
+   *  player may appear more than once. Appended at REVEAL, never at round
+   *  start, which would leak the current round's Fake Artist immediately. */
+  fakeHistory: string[];
   usedTopics: string[];
   scores: Record<string, number>;
   results: RoundResult[];
@@ -113,7 +114,7 @@ export function initialGameState(): GameState {
     accusedId: null,
     guess: null,
     guessVoted: [],
-    hasBeenFake: [],
+    fakeHistory: [],
     usedTopics: [],
     scores: {},
     results: [],
@@ -142,7 +143,7 @@ export function normalizeGameState(raw: Partial<GameState> | null | undefined): 
     accusedId: typeof raw.accusedId === "string" ? raw.accusedId : null,
     guess: typeof raw.guess === "string" ? raw.guess : null,
     guessVoted: arr(raw.guessVoted, base.guessVoted),
-    hasBeenFake: arr(raw.hasBeenFake, base.hasBeenFake),
+    fakeHistory: arr(raw.fakeHistory, base.fakeHistory),
     usedTopics: arr(raw.usedTopics, base.usedTopics),
     scores: obj(raw.scores, base.scores),
     results: arr(raw.results, base.results),

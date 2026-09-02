@@ -120,7 +120,7 @@ export function reduce(state: GameState, event: GameEvent): GameState {
         results: [...state.results, stripScores(r)],
         // Only now does the Fake Artist become public knowledge. Recording it
         // at round start would have leaked the answer immediately.
-        hasBeenFake: [...state.hasBeenFake, r.fakeArtistId],
+        fakeHistory: [...state.fakeHistory, r.fakeArtistId],
         usedTopics: [...state.usedTopics, r.topic],
       };
     }

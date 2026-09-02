@@ -143,12 +143,18 @@ const result = {
   guessAccepted: true, winners: [C], scores: { a: 0, b: 0, c: 1 },
 };
 let rev = reduce(g, { seq: 80, type: "round_revealed", payload: result });
-assert.deepStrictEqual(rev.hasBeenFake, [C], "fake recorded only at reveal");
+assert.deepStrictEqual(rev.fakeHistory, [C], "fake recorded only at reveal");
 assert.deepStrictEqual(rev.usedTopics, ["Tomato"]);
 assert.strictEqual(rev.results.length, 1);
 assert.strictEqual(rev.results[0].scores, undefined, "scores are not duplicated into the result");
 const revDup = reduce(rev, { seq: 80, type: "round_revealed", payload: result });
-assert.deepStrictEqual(revDup.hasBeenFake, [C], "duplicate reveal does not double-record");
+assert.deepStrictEqual(revDup.fakeHistory, [C], "duplicate reveal does not double-record");
+// The history is a log, not a set: the same player may fake again later.
+const later = reduce(rev, {
+  seq: 81, type: "round_revealed",
+  payload: { ...result, round: 2, topic: "Kettle", scores: { a: 0, b: 0, c: 2 } },
+});
+assert.deepStrictEqual(later.fakeHistory, [C, C], "a repeat fake is recorded again");
 assert.strictEqual(revDup.results.length, 1);
 ok("reveal records the fake once, and is idempotent");
 
@@ -388,5 +394,52 @@ delete globalThis.window;
 assert.strictEqual(rn.loadNickname(), "", "no window on the server");
 assert.doesNotThrow(() => rn.saveNickname("Hopper"));
 ok("no window on the server is handled");
+
+
+// --- who is the fake artist -------------------------------------------------
+const { pickFakeArtist, shuffle: shuf } = await import("../.test-build/game/selection.js");
+
+// Sample the REAL distribution rather than reasoning about it. The property
+// that matters is that no history ever makes the next fake artist a safe bet.
+function distribution(seats, history, samples = 4000) {
+  const t = new Map(seats.map((s) => [s, 0]));
+  for (let i = 0; i < samples; i++) t.set(pickFakeArtist(seats, history), t.get(pickFakeArtist(seats, history)) ?? 0);
+  for (const s of seats) t.set(s, 0);
+  for (let i = 0; i < samples; i++) { const c = pickFakeArtist(seats, history); t.set(c, t.get(c) + 1); }
+  return t;
+}
+const seats6 = ["a", "b", "c", "d", "e", "f"];
+
+// The exact case the old rule broke on: five have faked, one has not. Under
+// "everyone exactly once" this was a certainty.
+const nearlyDone = ["a", "b", "c", "d", "e"];
+const d1 = distribution(seats6, nearlyDone);
+const best = Math.max(...d1.values()) / 4000;
+assert.ok(best < 0.45, `last round should not be a safe bet, best guess was ${(best * 100).toFixed(0)}%`);
+assert.ok((d1.get("f") ?? 0) > 0, "the player who has not faked is still likely");
+assert.ok([...d1.values()].filter((v) => v > 0).length >= 4, "several candidates remain live");
+ok("the final round is never a certainty");
+
+// Never the same player twice running.
+const d2 = distribution(seats6, ["c"]);
+assert.strictEqual(d2.get("c"), 0, "the previous fake artist cannot be picked again");
+ok("never the same fake artist twice running");
+
+// Still biased towards whoever has faked least.
+const d3 = distribution(seats6, ["a", "a", "a", "b"]);
+assert.ok((d3.get("c") ?? 0) > (d3.get("a") ?? 0), "someone who has never faked beats a repeat offender");
+ok("selection favours whoever has faked least");
+
+// Degenerate inputs must not throw.
+assert.strictEqual(pickFakeArtist(["solo"], []), "solo");
+assert.strictEqual(pickFakeArtist(["solo"], ["solo"]), "solo", "one player, nobody else to pick");
+assert.ok(["a", "b"].includes(pickFakeArtist(["a", "b"], ["a"])));
+assert.throws(() => pickFakeArtist([], []), /no players/);
+ok("degenerate player counts are handled");
+
+// shuffle keeps everyone exactly once.
+const sh = shuf(seats6);
+assert.deepStrictEqual([...sh].sort(), [...seats6].sort(), "shuffle preserves the players");
+ok("seat shuffle preserves every player");
 
 console.log(`\nAll ${n} state-machine invariants hold.`);

@@ -373,7 +373,7 @@ await test("a complete round reaches a reveal and scores someone", async () => {
   assert.strictEqual(st.results.length, 1, "one round recorded");
   const total = Object.values(st.scores).reduce((a, b) => a + b, 0);
   assert.ok(total > 0, "somebody scored");
-  assert.strictEqual(st.hasBeenFake.length, 1, "the fake artist is recorded at reveal");
+  assert.strictEqual(st.fakeHistory.length, 1, "the fake artist is recorded at reveal");
 });
 
 await test("a tied vote opens a runoff and the runoff can actually be voted in", async () => {

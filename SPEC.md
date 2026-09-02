@@ -111,9 +111,26 @@ individually correct votes.
 
 ## Match structure
 
-- A series: **one round per player**, so everyone is the Fake Artist exactly
-  once. A 6-player match is 6 rounds.
-- Highest score at the end wins.
+- A series of **N rounds for N players**. Highest score at the end wins.
+- The Fake Artist is **not** a rotation and **not** "everyone exactly once".
+  That rule sounds fair, and is, but it leaks: with N players over N rounds the
+  final round is fully determined — everyone knows who the Fake Artist is
+  before a line is drawn — and the round before it is a coin flip.
+- Instead: never the same player twice running, weighted towards whoever has
+  faked least, and **no player may ever be more than 1.25x likelier than an
+  even split**. A hard ceiling, not an average.
+
+  Measured, worst realistic case (everyone has faked once except one player):
+
+  | players | even split | best possible guess | old rule |
+  |---|---|---|---|
+  | 5 | 25% | 31% | 100% |
+  | 6 | 20% | 25% | 100% |
+  | 8 | 14% | 17% | 100% |
+
+  The cost is that the role is no longer shared perfectly: over a 6-round match
+  the gap between most and least faked averages 1.9, and someone misses out
+  entirely in most matches. Unpredictability was judged worth more.
 
 ## Players
 

@@ -4,6 +4,7 @@ import { initPrivateState } from "./private";
 import { pickPair } from "./words";
 import { settleRound, tally } from "./reduce";
 import type { DraftEvent, GameState, PrivateState, RoundResult } from "./types";
+import { pickFakeArtist, shuffle } from "./selection";
 
 /**
  * Round orchestration: the server-side half of the rules.
@@ -14,33 +15,6 @@ import type { DraftEvent, GameState, PrivateState, RoundResult } from "./types";
  * rests on, and `round_revealed` is the single deliberate exception, fired
  * when both are public anyway.
  */
-
-/** Fisher-Yates. Takes an rng so seat order is reproducible in tests. */
-export function shuffle<T>(xs: T[], rng: () => number = Math.random): T[] {
-  const a = [...xs];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
-/**
- * Choose this round's Fake Artist.
- *
- * Everyone fakes exactly once per match, so the pick is uniform among players
- * who have not yet. `hasBeenFake` is only appended to at reveal -- appending
- * at round start would broadcast the answer the moment the round began.
- */
-export function pickFakeArtist(
-  seatOrder: string[],
-  hasBeenFake: string[],
-  rng: () => number = Math.random,
-): string {
-  const eligible = seatOrder.filter((id) => !hasBeenFake.includes(id));
-  const pool = eligible.length > 0 ? eligible : seatOrder;
-  return pool[Math.floor(rng() * pool.length)];
-}
 
 /**
  * Open a round: pick the pair, pick the Fake Artist, seed every private row.
@@ -59,7 +33,7 @@ export async function openRound(
   // Used categories come from past results, so no extra state is needed --
   // and a category is only "used" once its round has actually been revealed.
   const pair = pickPair(state.usedTopics, state.results.map((r) => r.category), rng);
-  const fakeArtistId = pickFakeArtist(state.seatOrder, state.hasBeenFake, rng);
+  const fakeArtistId = pickFakeArtist(state.seatOrder, state.fakeHistory, rng);
 
   await initPrivateState(
     tx,
@@ -205,3 +179,5 @@ export async function clearBallots(tx: Tx, gameId: string): Promise<void> {
      WHERE game_id = ${gameId}::uuid
   `);
 }
+
+export { pickFakeArtist, shuffle };
