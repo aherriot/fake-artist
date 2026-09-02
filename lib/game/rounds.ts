@@ -169,6 +169,31 @@ export function afterVote(
   });
 }
 
+/**
+ * Clear only the ballots, keeping roles and topics.
+ *
+ * Must run whenever a runoff opens. Without it every player still holds their
+ * first-round vote, `validateVote` rejects their runoff vote as a duplicate,
+ * and the round deadlocks in the runoff phase forever -- which is exactly what
+ * happened before this existed.
+ */
+export async function clearVotes(
+  tx: Tx,
+  gameId: string,
+  exceptPlayerId: string,
+): Promise<void> {
+  // The acting player is excluded on purpose. mutatePlayer writes their row
+  // itself, under a version guard read before produce() ran -- bumping the
+  // version here would make that guard fail, and the retry would loop into a
+  // 409 rather than clearing anything.
+  await tx.execute(sql`
+    UPDATE player_state
+       SET data = data || '{"vote":null}'::jsonb,
+           version = version + 1, updated_at = now()
+     WHERE game_id = ${gameId}::uuid AND player_id <> ${exceptPlayerId}::uuid
+  `);
+}
+
 /** Clear per-round secrets so a stale vote cannot leak into the next round. */
 export async function clearBallots(tx: Tx, gameId: string): Promise<void> {
   await tx.execute(sql`

@@ -164,6 +164,27 @@ ignores it if re-exported). Point them at your Neon region:
 grep -rl 'preferredRegion' app | xargs sed -i '' 's/"iad1"/"fra1"/'
 ```
 
+## Playing with 2 people (development only)
+
+Set in `.env.local`, then restart:
+
+```
+NEXT_PUBLIC_ALLOW_TWO_PLAYER_GAMES="1"
+```
+
+`NEXT_PUBLIC_` because `MIN_PLAYERS` is read on both sides; a server-only flag
+would leave the browser disabling Start on a game the server would accept.
+
+**A 2-player game can never catch the fake artist.** Nobody may vote for
+themselves, so the only legal votes are A→B and B→A: one vote each, a tie every
+time, then the same tie in the runoff, and the fake artist escapes. Every round
+ends the same way.
+
+So 2-player mode is for exercising the plumbing — lobby, turn order, drawing,
+secret roles, reload — not the game. **Use three browsers to test the real
+loop**, including the guess and the guess vote. One normal window and two
+incognito ones give you three separate cookie jars.
+
 ## Tests
 
 ```bash

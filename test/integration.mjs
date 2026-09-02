@@ -382,6 +382,43 @@ await test("a complete round reaches a reveal and scores someone", async () => {
   assert.strictEqual(st.hasBeenFake.length, 1, "the fake artist is recorded at reveal");
 });
 
+await test("a tied vote opens a runoff and the runoff can actually be voted in", async () => {
+  const { bs, code } = await startedMatch();
+  await drawAll(bs, code);
+  for (const b of bs) await b.post(`/api/games/${code}/action`, { type: "ready" });
+  await bs[0].post(`/api/games/${code}/action`, { type: "open_voting" });
+
+  // Everyone accuses the next player round the table: one vote each, a
+  // three-way tie by construction.
+  const seats = (await bs[0].get(`/api/games/${code}/state`)).body.state.seatOrder;
+  const byId = {};
+  for (const b of bs) byId[(await b.get(`/api/games/${code}/state`)).body.you] = b;
+  for (let i = 0; i < seats.length; i++) {
+    const r = await byId[seats[i]].post(`/api/games/${code}/vote`, {
+      targetId: seats[(i + 1) % seats.length],
+    });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  }
+
+  let st = (await bs[0].get(`/api/games/${code}/state`)).body.state;
+  assert.strictEqual(st.phase, "runoff", "a tie must open a runoff");
+  assert.strictEqual(st.runoffCandidates.length, seats.length);
+  assert.deepStrictEqual(st.voted, [], "the runoff starts with nobody having voted");
+
+  // The regression: everyone still held their first-round ballot, so every
+  // runoff vote was rejected as a duplicate and the round deadlocked here.
+  for (let i = 0; i < seats.length; i++) {
+    const r = await byId[seats[i]].post(`/api/games/${code}/vote`, {
+      targetId: seats[(i + 1) % seats.length],
+    });
+    assert.strictEqual(r.status, 200, `runoff vote rejected: ${JSON.stringify(r.body)}`);
+  }
+
+  st = (await bs[0].get(`/api/games/${code}/state`)).body.state;
+  assert.notStrictEqual(st.phase, "runoff", "the round must not be stuck in the runoff");
+  assert.ok(["reveal", "guess"].includes(st.phase), `unexpected phase ${st.phase}`);
+});
+
 await test("the fake artist cannot judge their own guess", async () => {
   const { bs, code } = await startedMatch();
   await drawAll(bs, code);

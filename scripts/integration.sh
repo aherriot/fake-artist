@@ -37,6 +37,11 @@ export SESSION_SECRET="integration-test-secret"
 export CRON_SECRET="integration-cron-secret"
 # Absent Pusher config is itself under test: broadcast() must degrade quietly.
 unset PUSHER_APP_ID PUSHER_SECRET NEXT_PUBLIC_PUSHER_KEY NEXT_PUBLIC_PUSHER_CLUSTER || true
+# Pin every game-rule flag explicitly. NEXT_PUBLIC_* is inlined at build time,
+# so without this the suite silently inherits whatever is in the developer's
+# .env.local -- which is how enabling 2-player mode locally broke the
+# minimum-players test.
+export NEXT_PUBLIC_ALLOW_TWO_PLAYER_GAMES="0"
 
 echo "==> applying schema"
 npx drizzle-kit push --force >/dev/null 2>&1

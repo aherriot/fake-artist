@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { apiHandler, readJson } from "@/lib/api";
 import { getPlayerId } from "@/lib/session";
 import { mutatePlayer } from "@/lib/game/private";
-import { afterVote, readPrivateRows, resolveVote } from "@/lib/game/rounds";
+import { afterVote, clearVotes, readPrivateRows, resolveVote } from "@/lib/game/rounds";
 import { broadcastAll } from "@/lib/pusher-server";
 import { validateVote } from "@/lib/game/reduce";
 import type { DraftEvent, PrivateState } from "@/lib/game/types";
@@ -57,7 +57,13 @@ async function postHandler(req: Request, { params }: { params: Promise<{ code: s
       // which alone knows who the Fake Artist is -- decides whether this leads
       // to a guess or straight to the reveal.
       const goingToRunoff = resolved.tied.length > 1 && ctx.state.phase !== "runoff";
-      if (!goingToRunoff) {
+      if (goingToRunoff) {
+        // Everyone votes again, so everyone's ballot must be cleared -- this
+        // player's included, which is why it happens after the tally above.
+        await clearVotes(tx, ctx.gameId, playerId);
+        return { ok: true as const, data: { ...priv, vote: null }, events };
+      }
+      {
         const fake = rows.find((r) => r.data.role === "fake");
         const topic = rows.find((r) => r.data.role !== "fake")?.data.topic ?? "";
         events.push(

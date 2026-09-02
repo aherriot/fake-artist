@@ -168,26 +168,61 @@ export function Pill({
 
 /* ------------------------------------------------------------------- Field */
 
+/**
+ * A labelled input.
+ *
+ * `error` is deliberately prominent. A disabled button with no explanation is
+ * the worst possible feedback -- the user cannot tell what is missing, and a
+ * screen reader is told nothing at all. Prefer leaving actions enabled and
+ * surfacing the specific problem here.
+ */
 export function Field({
   label,
   hint,
+  error,
+  required = false,
   mono = false,
+  id,
   ...props
-}: React.InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: string; mono?: boolean }) {
+}: React.InputHTMLAttributes<HTMLInputElement> & {
+  label: string;
+  hint?: string;
+  error?: string | null;
+  required?: boolean;
+  mono?: boolean;
+}) {
+  const inputId = id ?? `f-${label.replace(/\s+/g, "-").toLowerCase()}`;
+  const describedBy = error ? `${inputId}-err` : hint ? `${inputId}-hint` : undefined;
   return (
-    <label className="block">
-      <span className="label-caps">{label}</span>
+    <div className="block">
+      <label htmlFor={inputId} className="label-caps flex items-center gap-2">
+        {label}
+        {required && <span className="text-accent-500 normal-case tracking-normal">required</span>}
+      </label>
       <input
+        id={inputId}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy}
         className={clsx(
-          "mt-1.5 block w-full rounded-sm border border-wall-500 bg-wall-900 px-3 py-2",
-          "text-label-100 placeholder:text-label-700",
-          "focus:border-accent-500 focus:outline-none",
+          "mt-1.5 block w-full rounded-sm border bg-wall-900 px-3 py-2",
+          "text-label-100 placeholder:text-label-700 focus:outline-none",
+          error
+            ? "border-danger focus:border-danger"
+            : "border-wall-500 focus:border-accent-500",
           mono && "font-mono tracking-[0.2em] uppercase",
         )}
         {...props}
       />
-      {hint && <span className="mt-1 block text-xs text-label-500">{hint}</span>}
-    </label>
+      {error ? (
+        <p id={`${inputId}-err`} role="alert" className="mt-1.5 text-xs text-danger">
+          {error}
+        </p>
+      ) : hint ? (
+        <p id={`${inputId}-hint`} className="mt-1.5 text-xs text-label-500">
+          {hint}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
