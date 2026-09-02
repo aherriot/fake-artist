@@ -264,12 +264,12 @@ await test("the category is public but the topic never leaves the database", asy
   assert.ok(!raw.includes('"role"'), "roles leaked into the event log");
 });
 
-await test("drawing follows seat order for two passes, then discussion", async () => {
+await test("drawing follows seat order for two passes, then the vote opens itself", async () => {
   const { bs, code } = await startedMatch();
   const before = (await bs[0].get(`/api/games/${code}/state`)).body.state;
   assert.strictEqual(before.phase, "drawing");
   const after = await drawAll(bs, code);
-  assert.strictEqual(after.phase, "discussion");
+  assert.strictEqual(after.phase, "voting", "the last line opens the vote directly");
   assert.strictEqual(after.strokes.length, before.seatOrder.length * 2, "two passes each");
 });
 
@@ -306,11 +306,9 @@ await test("a malformed stroke is rejected", async () => {
 await test("votes stay secret until the last one lands", async () => {
   const { bs, code } = await startedMatch();
   await drawAll(bs, code);
-  for (const b of bs) await b.post(`/api/games/${code}/action`, { type: "ready" });
-  await bs[0].post(`/api/games/${code}/action`, { type: "open_voting" });
 
   const s0 = (await bs[0].get(`/api/games/${code}/state`)).body;
-  assert.strictEqual(s0.state.phase, "voting");
+  assert.strictEqual(s0.state.phase, "voting", "voting opens without anyone pressing Ready");
 
   // First vote: the fact is public, the choice is not.
   const target = s0.state.seatOrder.find((id) => id !== s0.you);
@@ -327,8 +325,6 @@ await test("votes stay secret until the last one lands", async () => {
 await test("a player cannot vote twice or for themselves", async () => {
   const { bs, code } = await startedMatch();
   await drawAll(bs, code);
-  for (const b of bs) await b.post(`/api/games/${code}/action`, { type: "ready" });
-  await bs[0].post(`/api/games/${code}/action`, { type: "open_voting" });
   const me = (await bs[0].get(`/api/games/${code}/state`)).body;
   const other = me.state.seatOrder.find((id) => id !== me.you);
 
@@ -342,8 +338,6 @@ await test("a player cannot vote twice or for themselves", async () => {
 await test("a complete round reaches a reveal and scores someone", async () => {
   const { bs, code } = await startedMatch();
   await drawAll(bs, code);
-  for (const b of bs) await b.post(`/api/games/${code}/action`, { type: "ready" });
-  await bs[0].post(`/api/games/${code}/action`, { type: "open_voting" });
 
   // Everyone accuses the same player, so there is a clear plurality.
   const s = (await bs[0].get(`/api/games/${code}/state`)).body;
@@ -385,8 +379,6 @@ await test("a complete round reaches a reveal and scores someone", async () => {
 await test("a tied vote opens a runoff and the runoff can actually be voted in", async () => {
   const { bs, code } = await startedMatch();
   await drawAll(bs, code);
-  for (const b of bs) await b.post(`/api/games/${code}/action`, { type: "ready" });
-  await bs[0].post(`/api/games/${code}/action`, { type: "open_voting" });
 
   // Everyone accuses the next player round the table: one vote each, a
   // three-way tie by construction.
@@ -422,8 +414,6 @@ await test("a tied vote opens a runoff and the runoff can actually be voted in",
 await test("the fake artist cannot judge their own guess", async () => {
   const { bs, code } = await startedMatch();
   await drawAll(bs, code);
-  for (const b of bs) await b.post(`/api/games/${code}/action`, { type: "ready" });
-  await bs[0].post(`/api/games/${code}/action`, { type: "open_voting" });
   let fake = null;
   for (const b of bs) {
     const me = (await b.get(`/api/games/${code}/state`)).body;

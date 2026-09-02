@@ -46,7 +46,6 @@ role assignment   server deals the pair; Fake Artist sees category + "you are fa
       ▼
 drawing           fixed seat order, 2 passes, one continuous line per turn
       ▼           preview with Undo / Submit; committing ends your turn
-discussion        voice assumed, in-app chat as fallback; ends on readiness
       ▼
 voting            simultaneous, revealed together
       ▼
@@ -79,15 +78,15 @@ host override for anyone stuck:
 | Phase | Ends when | Override |
 |---|---|---|
 | drawing turn | that player submits their line | host skips them |
-| discussion | all players press *Ready to vote* | host opens voting |
 | voting | all players have voted | host excludes a non-voter |
 | guess | the Fake Artist submits | — |
 | guess vote | all other players have voted | host excludes a non-voter |
 | reveal | host presses *Next round* | — |
 
-*Ready to vote* is a readiness tally rather than a host decision **[ours]**, so
-one player cannot cut short a discussion others are still having. Whether any
-of this needs a clock is a question for play-testing, not for now.
+**There is no discussion phase [ours].** The last line drawn opens the ballot
+directly. Talking still happens — it happens with the vote already open, which
+removes a whole round of "press Ready" bookkeeping from what is meant to be a
+party game. Whether any of this needs a clock is a question for play-testing.
 
 ### AFK
 

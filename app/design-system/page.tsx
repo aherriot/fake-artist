@@ -160,7 +160,7 @@ export default function DesignSystem() {
           <Button variant="primary" disabled>Waiting…</Button>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <Button size="sm" variant="primary">Ready to vote</Button>
+          <Button size="sm" variant="primary">Cast vote</Button>
           <Button size="sm" variant="secondary">Copy code</Button>
         </div>
       </Section>
@@ -208,8 +208,8 @@ export default function DesignSystem() {
             <Toggle
               checked={ready}
               onChange={setReady}
-              label="Ready to vote"
-              description="Discussion ends when everyone is ready."
+              label="Show seat numbers"
+              description="Numbers sit on every line, since colour cannot carry ten players."
             />
           </div>
         </div>

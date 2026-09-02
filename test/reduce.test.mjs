@@ -2,9 +2,9 @@
 // client-side, and the rules the server validates against.
 import assert from "node:assert";
 const { reduce, reduceAll, tally, settleRound, validateStroke, validateVote, validateAction } =
-  await import("../.test-build/reduce.js");
+  await import("../.test-build/game/reduce.js");
 const { initialGameState, normalizeGameState, currentDrawer, currentPass } =
-  await import("../.test-build/types.js");
+  await import("../.test-build/game/types.js");
 
 let n = 0;
 const ok = (name) => { n++; console.log("PASS " + name); };
@@ -37,9 +37,10 @@ for (let i = 0; i < 6; i++) {
   d = reduce(d, stroke(currentDrawer(d), 0, i));
 }
 assert.deepStrictEqual(order, [A, B, C, A, B, C], "two passes in fixed seat order");
-assert.strictEqual(d.phase, "discussion", "drawing ends after the last turn");
+assert.strictEqual(d.phase, "voting", "the last line opens the vote directly");
+assert.deepStrictEqual(d.voted, [], "the ballot starts empty");
 assert.strictEqual(d.strokes.length, 6);
-ok("two passes in fixed seat order, then discussion");
+ok("two passes in fixed seat order, then the vote opens itself");
 
 // A duplicate stroke must not advance the turn twice.
 const dup = reduce(d, stroke(A, 0, 99));
@@ -59,11 +60,12 @@ assert.strictEqual(currentDrawer(k), B);
 assert.strictEqual(k.strokes.length, 0, "a skip leaves no stroke");
 ok("host skip advances the turn without drawing");
 
-// --- readiness --------------------------------------------------------------
-let r = reduce(d, { seq: 50, type: "player_ready", payload: { playerId: A } });
-r = reduce(r, { seq: 51, type: "player_ready", payload: { playerId: A } });
-assert.deepStrictEqual(r.ready, [A], "readiness is idempotent");
-ok("readiness is idempotent");
+// A skipped LAST turn must open the vote just as a drawn one does.
+let skipAll = s;
+for (let i = 0; i < 6; i++) skipAll = reduce(skipAll, { seq: 200 + i, type: "turn_skipped", payload: { playerId: A } });
+assert.strictEqual(skipAll.phase, "voting", "skipping the final turn still opens the vote");
+ok("skipping the final turn opens the vote");
+
 
 // --- tally ------------------------------------------------------------------
 assert.deepStrictEqual(tally({ a: C, b: C, c: A }), { accusedId: C, tied: [] });
@@ -176,16 +178,20 @@ assert.strictEqual(validateVote(B, { state: voting, playerId: A, alreadyVoted: f
 assert.strictEqual(validateVote(A, { state: voting, playerId: A, alreadyVoted: false }).ok, false, "no self-vote");
 assert.strictEqual(validateVote(B, { state: voting, playerId: A, alreadyVoted: true }).ok, false, "no double vote");
 assert.strictEqual(validateVote("zz", { state: voting, playerId: A, alreadyVoted: false }).ok, false, "unknown player");
-assert.strictEqual(validateVote(B, { state: d, playerId: A, alreadyVoted: false }).ok, false, "voting not open");
+// `s` is mid-drawing: the ballot is not open yet.
+assert.strictEqual(validateVote(B, { state: s, playerId: A, alreadyVoted: false }).ok, false, "voting not open during drawing");
 const runoff = { ...voting, phase: "runoff", runoffCandidates: [A, B] };
 assert.strictEqual(validateVote(C, { state: runoff, playerId: A, alreadyVoted: false }).ok, false, "runoff is limited to tied players");
 ok("vote validation enforces phase, self-vote, duplicates and runoff set");
 
 const hostCtx = { state: d, status: "active", playerId: A, hostId: A, playerCount: 3 };
 assert.strictEqual(validateAction({ type: "skip_turn" }, hostCtx).ok, false, "cannot skip outside drawing");
-assert.strictEqual(validateAction({ type: "open_voting" }, hostCtx).ok, true);
+const drawingCtx = { ...hostCtx, state: s };
+assert.strictEqual(validateAction({ type: "skip_turn" }, drawingCtx).ok, true, "host may skip while drawing");
 assert.strictEqual(
-  validateAction({ type: "open_voting" }, { ...hostCtx, playerId: B }).ok, false, "host only");
+  validateAction({ type: "skip_turn" }, { ...drawingCtx, playerId: B }).ok, false, "host only");
+assert.strictEqual(validateAction({ type: "open_voting" }, hostCtx).ok, false, "open_voting no longer exists");
+assert.strictEqual(validateAction({ type: "ready" }, hostCtx).ok, false, "ready no longer exists");
 ok("action validation enforces host-only and phase");
 
 // --- legacy rows degrade rather than crash ---------------------------------
@@ -196,8 +202,8 @@ ok("legacy or partial state normalises to defaults");
 
 
 // --- optimistic reconciliation ---------------------------------------------
-const { emptyPending, reconcile, isReady, hasVoted, clearForNewRound, mergedStrokes } =
-  await import("../.test-build/optimistic.js");
+const { emptyPending, reconcile, hasVoted, clearForNewRound, mergedStrokes } =
+  await import("../.test-build/game/optimistic.js");
 
 const you = "a";
 const chatEv = (nonce) => ({
@@ -217,14 +223,13 @@ const failed = { ...pend, chat: [{ ...pend.chat[0], failed: true }] };
 assert.strictEqual(reconcile(failed, initialGameState(), you, [chatEv("n1")]).chat.length, 1, "failed messages survive");
 ok("a failed message is never silently dropped");
 
-// Readiness and voting clear once public state shows them.
-let p2 = { ...emptyPending(), ready: true, voted: true };
-const st2 = { ...initialGameState(), ready: [you], voted: [you] };
-assert.strictEqual(reconcile(p2, st2, you, []).ready, false);
-assert.strictEqual(reconcile(p2, st2, you, []).voted, false);
-assert.strictEqual(isReady(initialGameState(), p2, you), true, "prediction shows before confirmation");
+// A predicted vote clears once public state shows it landed.
+let p2 = { ...emptyPending(), voted: true };
+const st2 = { ...initialGameState(), voted: [you] };
+assert.strictEqual(reconcile(p2, st2, you, []).voted, false, "retired once confirmed");
+assert.strictEqual(hasVoted(initialGameState(), p2, you), true, "prediction shows before confirmation");
 assert.strictEqual(hasVoted(st2, emptyPending(), you), true, "confirmation shows without prediction");
-ok("readiness and voting merge prediction with confirmation");
+ok("a voted prediction merges with its confirmation");
 
 // One confirmed stroke of ours retires exactly one prediction.
 const mine = { playerId: you, seat: 0, points: [[0,0],[1,1]] };
@@ -237,10 +242,9 @@ assert.strictEqual(reconcile(p3, st4, you, []).strokes.length, 0, "others' strok
 ok("stroke predictions retire one-for-one against your own confirmed strokes");
 
 // A new round invalidates per-round predictions but not chat.
-const p5 = { chat: [{ nonce: "x", playerId: you, nickname: "A", text: "t", at: "t" }], strokes: [mine], ready: true, voted: true };
+const p5 = { chat: [{ nonce: "x", playerId: you, nickname: "A", text: "t", at: "t" }], strokes: [mine], voted: true };
 const cleared = clearForNewRound(p5);
 assert.strictEqual(cleared.strokes.length, 0);
-assert.strictEqual(cleared.ready, false);
 assert.strictEqual(cleared.voted, false);
 assert.strictEqual(cleared.chat.length, 1, "chat spans rounds");
 ok("a new round clears per-round predictions but keeps chat");
@@ -248,7 +252,7 @@ ok("a new round clears per-round predictions but keeps chat");
 
 // --- the word list ----------------------------------------------------------
 const { CATEGORIES, WORD_PAIRS, pickPair, MIN_TOPICS_PER_CATEGORY } =
-  await import("../.test-build/words.js");
+  await import("../.test-build/game/words.js");
 
 // The property the whole design rests on: knowing the public category must not
 // tell you the secret topic. A category with one topic hands over the answer.
@@ -293,7 +297,7 @@ ok("an exhausted list falls back instead of failing a long match");
 
 
 // --- whose move is it -------------------------------------------------------
-const { turnStatus, listOf } = await import("../.test-build/status.js");
+const { turnStatus, listOf } = await import("../.test-build/game/status.js");
 
 const P = [
   { id: "a", nickname: "Alice", seat: 0 },
@@ -311,18 +315,11 @@ assert.match(ts({ ...base2, phase: "drawing", turnIndex: 0 }, "b").headline, /Al
 assert.match(ts({ ...base2, phase: "drawing", turnIndex: 1 }, "b").headline, /Your turn/);
 ok("drawing says whose turn it is, from either side");
 
-// Readiness and votes flip the viewer from acting to waiting, and name who on.
-const disc = { ...base2, phase: "discussion", ready: ["a"] };
-assert.strictEqual(ts(disc, "b").yours, true, "not yet ready -> must act");
-assert.strictEqual(ts(disc, "a").yours, false, "already ready -> waiting");
-assert.match(ts(disc, "a").headline, /Bob and Cara/, "names who is holding it up");
-ok("discussion names exactly who is still to press Ready");
 
 // Optimistic flags stop the board flickering back to "your move".
-assert.strictEqual(ts(disc, "b", { ready: true }).yours, false, "optimistic ready counts");
 const vote = { ...base2, phase: "voting", voted: [] };
 assert.strictEqual(ts(vote, "a", { voted: true }).yours, false, "optimistic vote counts");
-ok("optimistic readiness and votes are respected");
+ok("an optimistic vote is respected");
 
 // Only the accused guesses; only the others judge it.
 const guess = { ...base2, phase: "guess", accusedId: "c" };
@@ -347,5 +344,49 @@ assert.strictEqual(listOf(["A", "B"]), "A and B");
 assert.strictEqual(listOf(["A", "B", "C"]), "A, B and C");
 assert.strictEqual(listOf(["A", "B", "C", "D"]), "A, B and 2 others");
 ok("waiting lists read like a sentence at any length");
+
+
+// --- remembered nickname ----------------------------------------------------
+const rn = await import("../.test-build/ui/rememberedName.js");
+
+const fakeStore = () => {
+  const m = new Map();
+  return {
+    getItem: (k) => (m.has(k) ? m.get(k) : null),
+    setItem: (k, v) => m.set(k, String(v)),
+    removeItem: (k) => m.delete(k),
+    _map: m,
+  };
+};
+globalThis.window = { localStorage: fakeStore() };
+
+assert.strictEqual(rn.loadNickname(), "", "nothing remembered to begin with");
+rn.saveNickname("  Hopper  ");
+assert.strictEqual(rn.loadNickname(), "Hopper", "trimmed on the way in");
+rn.saveNickname("x".repeat(200));
+assert.strictEqual(rn.loadNickname().length, rn.MAX_NAME, "clamped to the field limit");
+rn.saveNickname("   ");
+assert.strictEqual(rn.loadNickname().length, rn.MAX_NAME, "a blank name does not erase the old one");
+rn.forgetNickname();
+assert.strictEqual(rn.loadNickname(), "", "forgotten on request");
+ok("remembered nickname round-trips, trimmed and clamped");
+
+// The case that matters: private windows and blocked site data do not merely
+// return null, they THROW on access. An unguarded read would take the page down.
+globalThis.window = {
+  get localStorage() {
+    throw new DOMException("The operation is insecure.", "SecurityError");
+  },
+};
+assert.strictEqual(rn.loadNickname(), "", "throwing storage reads as 'nothing remembered'");
+assert.doesNotThrow(() => rn.saveNickname("Hopper"), "saving must never throw");
+assert.doesNotThrow(() => rn.forgetNickname(), "forgetting must never throw");
+ok("storage that throws degrades quietly instead of breaking the page");
+
+// Server-side rendering has no window at all.
+delete globalThis.window;
+assert.strictEqual(rn.loadNickname(), "", "no window on the server");
+assert.doesNotThrow(() => rn.saveNickname("Hopper"));
+ok("no window on the server is handled");
 
 console.log(`\nAll ${n} state-machine invariants hold.`);

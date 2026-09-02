@@ -42,7 +42,6 @@ export function reduce(state: GameState, event: GameEvent): GameState {
         category: event.payload.category,
         turnIndex: 0,
         strokes: [],
-        ready: [],
         voted: [],
         votes: {},
         runoffCandidates: [],
@@ -60,23 +59,17 @@ export function reduce(state: GameState, event: GameEvent): GameState {
         strokes: [...state.strokes, event.payload],
         turnIndex: state.turnIndex + 1,
       };
-      return next.turnIndex >= turns ? { ...next, phase: "discussion" as const } : next;
+      // The last line opens the vote directly -- no separate discussion phase
+      // and no Ready tally to shepherd everyone through.
+      return next.turnIndex >= turns ? openVote(next) : next;
     }
 
     case "turn_skipped": {
       const turns = turnsInRound(state.seatOrder.length);
       if (state.turnIndex >= turns) return state;
       const next = { ...state, turnIndex: state.turnIndex + 1 };
-      return next.turnIndex >= turns ? { ...next, phase: "discussion" as const } : next;
+      return next.turnIndex >= turns ? openVote(next) : next;
     }
-
-    case "player_ready": {
-      if (state.ready.includes(event.payload.playerId)) return state;
-      return { ...state, ready: [...state.ready, event.payload.playerId] };
-    }
-
-    case "discussion_started":
-      return { ...state, phase: "discussion" };
 
     case "voting_started":
       return {
@@ -148,6 +141,11 @@ function stripScores(r: RoundResult & { scores: Record<string, number> }): Round
   return rest;
 }
 
+/** Open the ballot with a clean slate. */
+function openVote(state: GameState): GameState {
+  return { ...state, phase: "voting", voted: [], votes: {}, runoffCandidates: [] };
+}
+
 export function reduceAll(state: GameState, events: GameEvent[]): GameState {
   return events.reduce(reduce, state);
 }
@@ -216,13 +214,6 @@ export function validateAction(
         return { ok: false, error: `Need at least ${MIN_PLAYERS} players` };
       return { ok: true };
 
-    case "ready":
-      if (ctx.state.phase !== "discussion")
-        return { ok: false, error: "Not in discussion" };
-      if (ctx.state.ready.includes(ctx.playerId))
-        return { ok: false, error: "Already ready" };
-      return { ok: true, event: { type: "player_ready", payload: { playerId: ctx.playerId } } };
-
     case "skip_turn": {
       if (ctx.playerId !== ctx.hostId)
         return { ok: false, error: "Only the host can skip a player" };
@@ -231,13 +222,6 @@ export function validateAction(
       if (!drawer) return { ok: false, error: "Nobody is drawing" };
       return { ok: true, event: { type: "turn_skipped", payload: { playerId: drawer } } };
     }
-
-    case "open_voting":
-      if (ctx.playerId !== ctx.hostId)
-        return { ok: false, error: "Only the host can open voting" };
-      if (ctx.state.phase !== "discussion")
-        return { ok: false, error: "Not in discussion" };
-      return { ok: true };
 
     case "next_round":
       if (ctx.playerId !== ctx.hostId)

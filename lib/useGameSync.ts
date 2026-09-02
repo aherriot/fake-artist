@@ -407,17 +407,6 @@ export function useGameSync(code: string) {
     [optimisticPost, sync.you, sync.players],
   );
 
-  const setReady = useCallback(
-    () =>
-      optimisticPost(
-        "/action",
-        { type: "ready" },
-        (p) => ({ ...p, ready: true }),
-        (p) => ({ ...p, ready: false }),
-      ),
-    [optimisticPost],
-  );
-
   const castVote = useCallback(
     (targetId: string) =>
       optimisticPost(
@@ -450,7 +439,6 @@ export function useGameSync(code: string) {
     retryChat,
     discardChat,
     submitStroke,
-    setReady,
     castVote,
   } as const;
 }

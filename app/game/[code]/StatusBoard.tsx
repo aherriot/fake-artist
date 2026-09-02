@@ -23,7 +23,6 @@ export function StatusBoard({ sync, code }: { sync: SyncState; code: string }) {
     hostId: sync.hostId,
     players: sync.players,
     privateState: sync.privateState,
-    ready: sync.pending.ready,
     voted: sync.pending.voted,
   });
   // Pusher can still be "live" while the API is unreachable -- they are
@@ -119,7 +118,6 @@ export function StatusBoard({ sync, code }: { sync: SyncState; code: string }) {
 const PHASE_LABEL: Record<string, string> = {
   lobby: "Lobby",
   drawing: "Drawing",
-  discussion: "Discussion",
   voting: "Voting",
   runoff: "Runoff",
   guess: "The guess",

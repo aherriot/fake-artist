@@ -18,11 +18,14 @@ export type GameStatus = "lobby" | "active" | "complete";
 /**
  * Round phases. Every phase ends when the people in it have acted -- there are
  * no timers in v1 -- with a host override for anyone stuck.
+ *
+ * There is no discussion phase: the last line drawn opens the vote directly.
+ * Talking still happens, it just happens with the ballot already open, which
+ * removes a whole round of "press Ready" bookkeeping from a party game.
  */
 export type Phase =
   | "lobby"
   | "drawing"
-  | "discussion"
   | "voting"
   | "runoff"
   | "guess"
@@ -63,8 +66,6 @@ export interface GameState {
   /** 0..(seats * PASSES - 1). Whose turn is derived from this. */
   turnIndex: number;
   strokes: Stroke[];
-  /** Players who have pressed Ready to vote. Public by nature. */
-  ready: string[];
   /** Who has voted -- the FACT is public, the vote is not. */
   voted: string[];
   /** Narrowed set during a runoff; empty otherwise. */
@@ -106,7 +107,6 @@ export function initialGameState(): GameState {
     category: null,
     turnIndex: 0,
     strokes: [],
-    ready: [],
     voted: [],
     runoffCandidates: [],
     votes: {},
@@ -136,7 +136,6 @@ export function normalizeGameState(raw: Partial<GameState> | null | undefined): 
     category: typeof raw.category === "string" ? raw.category : null,
     turnIndex: typeof raw.turnIndex === "number" ? raw.turnIndex : base.turnIndex,
     strokes: arr(raw.strokes, base.strokes),
-    ready: arr(raw.ready, base.ready),
     voted: arr(raw.voted, base.voted),
     runoffCandidates: arr(raw.runoffCandidates, base.runoffCandidates),
     votes: obj(raw.votes, base.votes),
@@ -176,8 +175,8 @@ export type GameEvent =
     }
   | { seq: number; type: "stroke_drawn"; payload: Stroke }
   | { seq: number; type: "turn_skipped"; payload: { playerId: string } }
-  | { seq: number; type: "player_ready"; payload: { playerId: string } }
-  | { seq: number; type: "discussion_started"; payload: Record<string, never> }
+  /** Only used to open a RUNOFF. The first vote opens itself, when the last
+   *  line lands. */
   | { seq: number; type: "voting_started"; payload: { candidates: string[] } }
   | { seq: number; type: "player_voted"; payload: { playerId: string } }
   | {
@@ -221,9 +220,7 @@ export type DraftEvent = GameEvent extends infer T
 
 export type GameAction =
   | { type: "start_match" }
-  | { type: "ready" }
   | { type: "skip_turn" }
-  | { type: "open_voting" }
   | { type: "next_round" };
 
 export interface Snapshot {

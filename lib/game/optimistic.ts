@@ -16,8 +16,6 @@ export interface Pending {
   chat: PendingChat[];
   /** Your own stroke, drawn locally the instant you submit it. */
   strokes: Stroke[];
-  /** You pressed Ready to vote. */
-  ready: boolean;
   /** You cast a vote (the target stays secret; only the fact is shown). */
   voted: boolean;
 }
@@ -35,7 +33,6 @@ export interface PendingChat {
 export const emptyPending = (): Pending => ({
   chat: [],
   strokes: [],
-  ready: false,
   voted: false,
 });
 
@@ -65,7 +62,6 @@ export function reconcile(
   return {
     chat: pending.chat.filter((c) => c.failed || !confirmedNonces.has(c.nonce)),
     strokes: pending.strokes.slice(Math.min(confirmedMine, pending.strokes.length)),
-    ready: pending.ready && !(you !== null && state.ready.includes(you)),
     voted: pending.voted && !(you !== null && state.voted.includes(you)),
   };
 }
@@ -75,16 +71,13 @@ export function mergedStrokes(state: GameState, pending: Pending): Stroke[] {
   return [...state.strokes, ...pending.strokes];
 }
 
-export const isReady = (state: GameState, pending: Pending, you: string | null) =>
-  pending.ready || (you !== null && state.ready.includes(you));
-
 export const hasVoted = (state: GameState, pending: Pending, you: string | null) =>
   pending.voted || (you !== null && state.voted.includes(you));
 
 /**
- * A round boundary invalidates every prediction: strokes are cleared, ballots
- * reset, readiness starts again. Chat survives, since it spans rounds.
+ * A round boundary invalidates every prediction: strokes cleared, ballots
+ * reset. Chat survives, since it spans rounds.
  */
 export function clearForNewRound(pending: Pending): Pending {
-  return { ...pending, strokes: [], ready: false, voted: false };
+  return { ...pending, strokes: [], voted: false };
 }

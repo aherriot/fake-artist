@@ -6,6 +6,7 @@ import { fetchJson } from "@/lib/fetch-json";
 import { ErrorPanel } from "@/lib/ui/ErrorPanel";
 import { Button, Field, Plaque } from "@/lib/ui/primitives";
 import { Wordmark } from "@/lib/ui/Wordmark";
+import { loadNickname, saveNickname } from "@/lib/ui/rememberedName";
 import type { Snapshot } from "@/lib/game/types";
 
 type Gate =
@@ -34,6 +35,18 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
   const [nickname, setNickname] = useState("");
   const [busy, setBusy] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
+  const [remembered, setRemembered] = useState(false);
+
+  // After mount only: the server has no localStorage to read.
+  useEffect(() => {
+    const saved = loadNickname();
+    if (!saved) return;
+    setNickname((current) => {
+      if (current) return current;
+      setRemembered(true);
+      return saved;
+    });
+  }, []);
 
   const check = useCallback(async (attempt = 0): Promise<void> => {
     const res = await fetchJson<Snapshot>(`/api/games/${upper}/state`);
@@ -84,6 +97,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       setJoinError(res.requestId ? `${res.error} (ref ${res.requestId})` : res.error);
       return;
     }
+    saveNickname(nickname);
     setGate({ kind: "member" });
   }
 
@@ -167,9 +181,14 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
                   maxLength={24}
                   placeholder="e.g. Hopper"
                   error={joinError}
-                  hint="Everyone in the room will see this."
+                  hint={
+                    remembered
+                      ? "Remembered on this device. Change it if you like."
+                      : "Everyone in the room will see this."
+                  }
                   onChange={(e) => {
                     setNickname(e.target.value);
+                    setRemembered(false);
                     if (joinError) setJoinError(null);
                   }}
                   onKeyDown={(e) => e.key === "Enter" && !busy && join()}

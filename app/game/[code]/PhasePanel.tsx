@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { useGameSync } from "@/lib/useGameSync";
 import { Button, Plaque, penVar } from "@/lib/ui/primitives";
 import { useAction } from "@/lib/ui/useAction";
-import { hasVoted, isReady } from "@/lib/game/optimistic";
+import { hasVoted } from "@/lib/game/optimistic";
 import { clsx } from "clsx";
 
 type Game = ReturnType<typeof useGameSync>;
@@ -22,8 +22,6 @@ export function PhasePanel({ game, act, isHost }: { game: Game; act: Act; isHost
   switch (game.sync.state.phase) {
     case "drawing":
       return <DrawingPanel game={game} act={act} isHost={isHost} />;
-    case "discussion":
-      return <DiscussionPanel game={game} act={act} isHost={isHost} />;
     case "voting":
     case "runoff":
       return <VotePanel game={game} />;
@@ -60,37 +58,6 @@ function DrawingPanel({ game, act, isHost }: { game: Game; act: Act; isHost: boo
   );
 }
 
-function DiscussionPanel({ game, act, isHost }: { game: Game; act: Act; isHost: boolean }) {
-  const { sync } = game;
-  const ready = isReady(sync.state, sync.pending, sync.you);
-  const markReady = useAction(game.setReady);
-  const open = useAction(async () => act({ type: "open_voting" }));
-  return (
-    <Plaque>
-      <div className="flex flex-wrap items-center gap-3">
-        <Button
-          variant={ready ? "secondary" : "primary"}
-          disabled={ready || markReady.pending}
-          onClick={() => markReady.run()}
-        >
-          {markReady.pending ? "Sending…" : ready ? "You are ready" : "Ready to vote"}
-        </Button>
-        <span className="text-xs text-label-500">
-          {sync.state.ready.length} of {sync.players.length} ready
-        </span>
-        {isHost && (
-          <Button size="sm" variant="ghost" disabled={open.pending} onClick={() => open.run()}>
-            {open.pending ? "Opening…" : "Open voting now"}
-          </Button>
-        )}
-      </div>
-      {(markReady.error || open.error) && (
-        <p role="alert" className="mt-3 text-sm text-danger">{markReady.error ?? open.error}</p>
-      )}
-    </Plaque>
-  );
-}
-
 function VotePanel({ game }: { game: Game }) {
   const { sync } = game;
   const { state } = sync;
@@ -105,7 +72,14 @@ function VotePanel({ game }: { game: Game }) {
 
   return (
     <Plaque>
-      <p className="label-caps">{voted ? "Your vote is in" : "Choose"}</p>
+      <p className="label-caps">
+        {voted ? "Your vote is in" : "Who is the fake artist?"}
+      </p>
+      {!voted && (
+        <p className="mt-1 text-sm text-label-500">
+          Pick the player whose line looked like a guess. You cannot pick yourself.
+        </p>
+      )}
       <div className="mt-3 flex flex-wrap gap-2">
         {candidates
           .filter((p) => p.id !== sync.you)

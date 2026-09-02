@@ -1,10 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { fetchJson } from "@/lib/fetch-json";
 import { Button, Field, Plaque } from "@/lib/ui/primitives";
 import { Wordmark } from "@/lib/ui/Wordmark";
+import { loadNickname, saveNickname } from "@/lib/ui/rememberedName";
 
 /** The join-code alphabet: no O, I, 0 or 1, so codes survive being read aloud. */
 const CODE_ALPHABET = /[^ABCDEFGHJKLMNPQRSTUVWXYZ23456789]/g;
@@ -18,6 +19,22 @@ export default function Home() {
   const [nameError, setNameError] = useState<string | null>(null);
   const [codeError, setCodeError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [remembered, setRemembered] = useState(false);
+
+  /**
+   * Loaded after mount, not during render: the server has no localStorage, so
+   * seeding state from it directly would be a hydration mismatch. Only fills a
+   * field the user has not already started typing into.
+   */
+  useEffect(() => {
+    const saved = loadNickname();
+    if (!saved) return;
+    setName((current) => {
+      if (current) return current;
+      setRemembered(true);
+      return saved;
+    });
+  }, []);
 
   /**
    * Validate on submit rather than disabling the buttons.
@@ -53,7 +70,10 @@ export default function Home() {
     setBusy("create");
     const data = await post<{ code: string }>("/api/games", { nickname: name });
     setBusy(null);
-    if (data?.code) router.push(`/game/${data.code}`);
+    if (data?.code) {
+      saveNickname(name);
+      router.push(`/game/${data.code}`);
+    }
   }
 
   async function join() {
@@ -77,7 +97,10 @@ export default function Home() {
     setBusy("join");
     const data = await post<{ ok: boolean }>(`/api/games/${c}/join`, { nickname: name });
     setBusy(null);
-    if (data) router.push(`/game/${c}`);
+    if (data) {
+      saveNickname(name);
+      router.push(`/game/${c}`);
+    }
   }
 
   return (
@@ -102,9 +125,14 @@ export default function Home() {
             maxLength={24}
             placeholder="e.g. Hopper"
             error={nameError}
-            hint="Everyone in the room sees this. Needed to create or join."
+            hint={
+              remembered
+                ? "Remembered on this device. Change it if you like."
+                : "Everyone in the room sees this. Needed to create or join."
+            }
             onChange={(e) => {
               setName(e.target.value);
+              setRemembered(false);
               if (nameError) setNameError(null);
             }}
             onKeyDown={(e) => e.key === "Enter" && create()}

@@ -6,7 +6,6 @@ import { fetchJson } from "@/lib/fetch-json";
 import { ErrorPanel } from "@/lib/ui/ErrorPanel";
 import { Canvas } from "@/lib/ui/Canvas";
 import { Button, Plaque, penVar } from "@/lib/ui/primitives";
-import { hasVoted, isReady } from "@/lib/game/optimistic";
 import { MIN_PLAYERS, currentDrawer, currentPass, PASSES } from "@/lib/game/types";
 import { Roster } from "./Roster";
 import { Chat } from "./Chat";
@@ -171,4 +170,3 @@ export default function GameView({ code }: { code: string }) {
 const connColor = (c: string) =>
   c === "live" ? "#34c98b" : c === "error" ? "#ff5c5c" : c === "polling" ? "#56b4e9" : "#e0a020";
 
-export { isReady, hasVoted };

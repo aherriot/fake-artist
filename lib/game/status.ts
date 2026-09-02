@@ -24,7 +24,6 @@ export function turnStatus(args: {
   privateState: PrivateState | null;
   /** Optimistic: treat the viewer as already done, so the board does not
    *  flicker back to "your move" between the click and the confirmation. */
-  ready?: boolean;
   voted?: boolean;
 }): TurnStatus {
   const { state, you, hostId, players, privateState } = args;
@@ -56,27 +55,6 @@ export function turnStatus(args: {
       };
     }
 
-    case "discussion": {
-      const done = args.ready || (you !== null && state.ready.includes(you));
-      const outstanding = players.filter((p) => !state.ready.includes(p.id)).map((p) => p.nickname);
-      if (!done) {
-        return {
-          yours: true,
-          headline: "Talk it over, then press Ready to vote",
-          detail: "Who drew like someone who did not know what this was?",
-          waitingOn: [],
-        };
-      }
-      return {
-        yours: false,
-        headline:
-          outstanding.length === 0
-            ? "Opening the vote…"
-            : `Waiting for ${listOf(outstanding)} to be ready`,
-        waitingOn: outstanding,
-      };
-    }
-
     case "voting":
     case "runoff": {
       const done = args.voted || (you !== null && state.voted.includes(you));
@@ -87,8 +65,11 @@ export function turnStatus(args: {
           headline:
             state.phase === "runoff"
               ? "The vote tied — vote again"
-              : "Vote for the fake artist",
-          detail: "Everyone's vote is revealed at the same time.",
+              : "Talk it over, then vote for the fake artist",
+          detail:
+            state.phase === "runoff"
+              ? "Only the tied players can be chosen."
+              : "Who drew like someone who did not know what this was? Everyone's vote is revealed at the same time.",
           waitingOn: [],
         };
       }

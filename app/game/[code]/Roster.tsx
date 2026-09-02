@@ -62,9 +62,6 @@ export function Roster({
                 {p.id === sync.hostId && <span className="label-caps">Host</span>}
                 {p.id === sync.you && <span className="label-caps">You</span>}
                 {isDrawer && <span className="label-caps text-accent-400">Drawing</span>}
-                {state.phase === "discussion" && state.ready.includes(p.id) && (
-                  <span className="label-caps text-success">Ready</span>
-                )}
                 {(state.phase === "voting" || state.phase === "runoff") &&
                   state.voted.includes(p.id) && (
                     <span className="label-caps text-success">Voted</span>

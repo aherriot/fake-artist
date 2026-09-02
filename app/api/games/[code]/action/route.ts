@@ -59,9 +59,6 @@ async function postHandler(req: Request, { params }: { params: Promise<{ code: s
       return { ok: true as const, produced: { events, status: "active" as const } };
     }
 
-    if (action.type === "open_voting") {
-      events.push({ type: "voting_started", payload: { candidates: [] } });
-    }
 
     if (action.type === "next_round") {
       const next = ctx.state.round + 1;
