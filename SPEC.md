@@ -46,7 +46,7 @@ role assignment   server deals the pair; Fake Artist sees category + "you are fa
       ▼
 drawing           fixed seat order, 2 passes, one continuous line per turn
       ▼           preview with Undo / Submit; committing ends your turn
-discussion        timed; voice assumed, in-app chat as fallback
+discussion        voice assumed, in-app chat as fallback; ends on readiness
       ▼
 voting            simultaneous, revealed together
       ▼
@@ -70,6 +70,24 @@ reveal            roles, pair, and outcome shown; scores updated
 - **Two lines each**, i.e. two passes around the table.
 - Each player draws in their own colour, assigned by seat.
 - No erasing.
+
+### Phase advancement
+
+**No timers in v1.** Every phase ends when the people in it have acted, with a
+host override for anyone stuck:
+
+| Phase | Ends when | Override |
+|---|---|---|
+| drawing turn | that player submits their line | host skips them |
+| discussion | all players press *Ready to vote* | host opens voting |
+| voting | all players have voted | host excludes a non-voter |
+| guess | the Fake Artist submits | — |
+| guess vote | all other players have voted | host excludes a non-voter |
+| reveal | host presses *Next round* | — |
+
+*Ready to vote* is a readiness tally rather than a host decision **[ours]**, so
+one player cannot cut short a discussion others are still having. Whether any
+of this needs a clock is a question for play-testing, not for now.
 
 ### AFK
 
@@ -113,11 +131,14 @@ individually correct votes.
 Desktop and mobile treated equally, responsive throughout. Touch drawing must
 work as well as mouse; the canvas suppresses scroll/pan gestures while drawing.
 
-## Open questions
+## Deferred to later phases
 
-1. **Phase timer lengths** for drawing turns, discussion, and voting.
-2. **Is the finished drawing kept** after the reveal — a per-match gallery, or
-   discarded at the round boundary?
+- **Timers.** None in v1. Play-testing decides whether any phase needs a clock;
+  the host override covers a stalled game until then.
+- **Drawing gallery.** Finished drawings shown together at the end of a match.
+  Worth keeping in mind now only so far as strokes are stored durably in the
+  event log, which they already are — no schema change will be needed.
+- **Room-supplied custom pairs**, the cheap replacement for a Game Master.
 
 ## Deliberately not decided yet
 
