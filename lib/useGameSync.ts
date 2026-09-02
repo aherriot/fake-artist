@@ -41,6 +41,8 @@ export interface SyncState {
   error: string | null;
   /** Incremented whenever a gap forced a repair -- surfaced on the debug strip. */
   resyncs: number;
+  /** The room code this hook is synced to. */
+  code: string;
   /** Local predictions, not yet confirmed by the server. Kept separate from
    *  `state` so a gap-heal can never mistake one for a fact. */
   pending: Pending;
@@ -60,6 +62,7 @@ const EMPTY: SyncState = {
   ready: false,
   error: null,
   resyncs: 0,
+  code: "",
   pending: emptyPending(),
 };
 
@@ -82,7 +85,7 @@ const EMPTY: SyncState = {
  * delivery, reconnects, and browser reloads with no special-casing.
  */
 export function useGameSync(code: string) {
-  const [sync, setSync] = useState<SyncState>(EMPTY);
+  const [sync, setSync] = useState<SyncState>({ ...EMPTY, code });
 
   // Refs mirror state so the Pusher callbacks (bound once) always see current
   // values without re-subscribing on every event.

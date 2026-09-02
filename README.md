@@ -3,12 +3,9 @@
 An online multiplayer implementation of the drawing-and-deduction party game.
 Next.js on Vercel, Neon Postgres, realtime over Pusher.
 
-**Status: the full round loop works; the canvas is next.** Roles and topics are
-dealt in secret, drawing follows seat order for two passes, votes are cast
-secretly and revealed together, ties trigger a runoff, a caught Fake Artist
-guesses and the room judges it, and scores accumulate across a match. What is
-missing is the drawing surface itself — strokes are submitted as normalised
-point arrays and the API is complete, but there is no canvas UI yet.
+**Status: playable.** A full match runs end to end in the browser — lobby,
+secret roles, drawing on a shared canvas, discussion, a secret ballot, runoffs,
+the guess and the room's judgement of it, and a scoreboard across rounds.
 
 The sync layer is inherited from an earlier prototype (the git history predates
 this game) where it was built and load-tested. Only the rules layer changed.
@@ -196,6 +193,23 @@ npm run test:all
 `test:integration` boots a throwaway Postgres and the real Next server, runs 19
 scenarios, and tears both down — no Neon account, no network. It runs with **no
 Pusher credentials**, so the polling fallback is exercised every time.
+
+## The canvas
+
+SVG in a 0..1 viewBox rather than a raster canvas, so the same normalised
+points render crisply at any size and can be replayed from the event log later
+without storing pixels.
+
+One continuous line per turn: pointer-down to pointer-up makes the stroke,
+which is then previewed with Undo and Submit. Nothing is sent until you submit,
+so a shaky trackpad costs a redraw rather than your turn. Pointer capture keeps
+the line following you past the edge of the sheet, and points closer than
+0.004 apart are dropped.
+
+Every stroke carries its **seat number** at its start point, and hovering a
+name in the roster dims every line that is not theirs. Colour cannot separate
+ten players, and "whose line is that?" is the question the game turns on, so
+this is the mechanism rather than a convenience.
 
 ## Optimistic updates
 
