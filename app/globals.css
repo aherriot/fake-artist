@@ -1,0 +1,131 @@
+@import "tailwindcss";
+
+/**
+ * GALLERY AT NIGHT
+ *
+ * A darkened exhibition space with the artwork lit. The chrome is gallery
+ * signage; the drawing is the only thing that should hold your eye.
+ *
+ * The governing rule: with up to ten saturated pen colours on screen, the UI
+ * must recede. Everything here is warm neutral except one accent, and the
+ * accent is used sparingly.
+ */
+/**
+ * `static` is load-bearing: Tailwind v4 tree-shakes theme variables that no
+ * utility class references. The pen colours are consumed through inline
+ * style={{ background: var(--color-pen-N) }} rather than a bg-* class, so
+ * without this they are silently dropped and every stroke renders invisible.
+ */
+@theme static {
+  /* --- Gallery walls. Warm, never pure black; real galleries are warm. --- */
+  --color-wall-950: #0d0b0a;
+  --color-wall-900: #14110f;
+  --color-wall-800: #1a1714;   /* page background */
+  --color-wall-700: #241f1b;   /* raised surface, cards */
+  --color-wall-600: #2f2823;   /* hover surface */
+  --color-wall-500: #3d342d;   /* borders */
+  --color-wall-400: #574b41;   /* strong borders, disabled text */
+
+  /* --- Wall label text, warm off-whites --- */
+  --color-label-100: #f5f1ea;  /* primary */
+  --color-label-300: #cbbfb2;  /* secondary */
+  --color-label-500: #9a8b7c;  /* tertiary, captions */
+  --color-label-700: #7f7063;  /* muted, disabled -- 3.74:1 on wall-800 */
+
+  /* --- The artwork. Warm paper, not #fff; ink, not #000. --- */
+  --color-paper: #faf7f1;
+  --color-paper-edge: #e8e1d5;
+  --color-ink: #1a1714;
+
+  /* --- Accent: the Oink hot pink, a loud anachronism in a sober room. --- *
+   * Used for the single most important action on a screen, and nothing else. */
+  --color-accent-400: #ff6ba6;
+  --color-accent-500: #ff2e7e;
+  --color-accent-600: #e01466;
+  --color-accent-700: #b30d50;
+
+  /* --- Semantic --- */
+  --color-success: #34c98b;
+  --color-warning: #e0a020;
+  --color-danger: #ff5c5c;
+
+  /**
+   * PEN COLOURS -- seat 1..10.
+   *
+   * Seats 1-8 are Okabe-Ito, the colour-universal categorical standard,
+   * adjusted only where a hue was illegible as ink on white paper (the
+   * original #F0E442 yellow disappears; seat 7 is an ochre instead).
+   *
+   * Seats 9-10 are past the point where any palette stays reliably
+   * distinguishable -- research puts that ceiling at about eight. They are
+   * included because the game supports ten players, and are the specific
+   * reason attribution never rests on colour alone: every stroke also carries
+   * a seat number, and tapping one names its author.
+   *
+   * Every pen clears 3.2:1 against the paper. Okabe-Ito was authored for
+   * chart FILLS; four of its hues are too light for a 3px stroke on cream and
+   * are darkened here, which is a deliberate departure from the standard.
+   *
+   * Seat 7 is olive rather than the obvious magenta. Magenta separates best
+   * on paper but reads as the brand accent, and a pen that looks like "the
+   * important action colour" actively misleads on a canvas.
+   */
+  --color-pen-1: #0072b2;   /* blue */
+  --color-pen-2: #d55e00;   /* vermillion */
+  --color-pen-3: #009e73;   /* bluish green */
+  --color-pen-4: #c66a9d;   /* reddish purple, darkened */
+  --color-pen-5: #b87f00;   /* orange, darkened */
+  --color-pen-6: #1b90d2;   /* sky blue, darkened */
+  --color-pen-7: #5f7d1f;   /* olive   (see note) */
+  --color-pen-8: #2b2622;   /* ink */
+  --color-pen-9: #6d4aa8;   /* violet  (extended) */
+  --color-pen-10: #7a4419;  /* umber   (extended) */
+
+  /* --- Type. Serif for labels, grotesque for controls, mono for codes. --- */
+  --font-display: var(--font-instrument-serif), Georgia, "Times New Roman", serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* --- Radii. Nearly square: frames and plaques, not bubbles. --- */
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+
+  /* --- The lit-artwork glow. The only "light source" in the room. --- */
+  --shadow-lit: 0 0 0 1px #e8e1d5, 0 2px 8px rgba(0,0,0,.5), 0 24px 64px -12px rgba(255,246,230,.13);
+  --shadow-plaque: 0 1px 2px rgba(0,0,0,.4);
+}
+
+/* Wall-label small caps: the signature type treatment of the whole system. */
+@utility label-caps {
+  font-family: var(--font-sans);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-label-500);
+}
+
+@utility catalogue-no {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  color: var(--color-label-300);
+}
+
+html { color-scheme: dark; }
+
+body {
+  background: var(--color-wall-800);
+  color: var(--color-label-100);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Drawing must never be interrupted by the browser panning the page. */
+.canvas-surface { touch-action: none; }
+
+:focus-visible {
+  outline: 2px solid var(--color-accent-500);
+  outline-offset: 2px;
+}

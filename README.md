@@ -91,6 +91,33 @@ app/game/[code]/      page.tsx = membership gate, GameView.tsx = the live game
 game, so nobody can observe an active game without their private state. That is
 where the word and the fake artist get assigned.
 
+## Design system
+
+**Gallery at Night** — a darkened exhibition space with the artwork lit. The
+chrome is gallery signage; the drawing is the only thing that should hold your
+eye. Tailwind v4 tokens in `app/globals.css`, primitives in `lib/ui/`,
+Headless UI for behaviour.
+
+Browse it at **`/design-system`**.
+
+The governing constraint is that up to ten saturated pen colours share the
+screen, so the interface has to recede: everything is warm neutral except one
+accent — the Oink hot pink, reserved for the single most important action on a
+screen.
+
+Two things in the palette are deliberate departures worth knowing:
+
+- **Pens are Okabe–Ito, darkened.** That standard was authored for chart fills;
+  several of its hues are too light to read as a 3px stroke on cream paper.
+  Every pen clears 3.2:1 against the paper.
+- **Colour never carries attribution alone.** Past about eight categories no
+  palette stays reliably distinguishable for anyone, and this game supports
+  ten players — so every stroke also carries its seat number.
+
+`@theme static` in `globals.css` is load-bearing: Tailwind v4 tree-shakes theme
+variables no utility class references, and the pen colours are consumed through
+inline `var(--color-pen-N)`. Without it every stroke renders invisible.
+
 ## Setup
 
 1. **Neon** — create a project, copy the **pooled** connection string (host
