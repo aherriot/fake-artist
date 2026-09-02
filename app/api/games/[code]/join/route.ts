@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import { getOrCreatePlayerId } from "@/lib/session";
 import { mutate } from "@/lib/game/mutate";
 import { broadcast } from "@/lib/pusher-server";
+import { MAX_PLAYERS } from "@/lib/game/types";
 
 // Next.js requires these to be literal exports in the route file itself --
 // re-exporting them from a shared module is silently ignored.
@@ -14,7 +15,7 @@ export const preferredRegion = "iad1";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const MAX_PLAYERS = 6;
+
 
 /** POST /api/games/[code]/join */
 async function postHandler(req: Request, { params }: { params: Promise<{ code: string }> }) {

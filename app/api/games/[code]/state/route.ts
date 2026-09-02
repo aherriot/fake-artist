@@ -48,7 +48,7 @@ async function getHandler(_req: Request, { params }: { params: Promise<{ code: s
   const game = rows.rows[0];
   if (!game) return NextResponse.json({ error: "Game not found" }, { status: 404 });
 
-  const [p, priv, committed] = await Promise.all([
+  const [p, priv] = await Promise.all([
     db.execute<{ id: string; nickname: string; seat: number }>(sql`
       SELECT id, nickname, seat FROM players
        WHERE game_id = ${game.id}::uuid ORDER BY seat ASC
@@ -58,22 +58,13 @@ async function getHandler(_req: Request, { params }: { params: Promise<{ code: s
       SELECT data FROM player_state
        WHERE game_id = ${game.id}::uuid AND player_id = ${playerId}::uuid
     `),
-    // WHO has committed is public; WHAT they picked is not. Note this selects
-    // only the id -- the pending tile never leaves the database.
-    db.execute<{ player_id: string }>(sql`
-      SELECT player_id FROM player_state
-       WHERE game_id = ${game.id}::uuid AND data->>'pending' IS NOT NULL
-    `),
   ]);
 
   const snapshot: Snapshot = {
     gameId: game.id,
     code: game.code,
     status: game.status,
-    // `committed` is DERIVED, not stored: persisting it would mean writing the
-    // shared games row on every commit, which is exactly the contention the
-    // player_state split removes.
-    state: { ...normalizeGameState(game.state), committed: committed.rows.map((r) => r.player_id) },
+    state: normalizeGameState(game.state),
     lastSeq: Number(game.last_seq ?? 0),
     players: p.rows as PlayerInfo[],
     hostId: game.host_id,

@@ -2,10 +2,14 @@
  * Integration tests: real HTTP against the real route handlers, backed by a
  * throwaway Postgres.
  *
- * These exist because unit tests missed a schema bug that any real user hit
- * within minutes -- creating a second game from the SAME browser. The pure
- * tests used a fresh cookie per player, so a stable identity across games was
- * never exercised. Anything here runs the code paths a browser actually runs.
+ * These exist because unit tests once missed a schema bug that a real user hit
+ * within minutes -- creating a second game from the SAME browser. Those tests
+ * used a fresh cookie per player, so a stable identity across games was never
+ * exercised. Every scenario here uses cookie jars that persist, the way a
+ * browser does, and runs the code paths a browser actually runs.
+ *
+ * Game rules are not implemented yet; this covers lobby, identity, membership,
+ * the event log, and operations. Rule tests get added alongside the rules.
  */
 import assert from "node:assert";
 
@@ -153,7 +157,7 @@ await test("non-member cannot authorise the presence channel", async () => {
   assert.ok([401, 403].includes(res.status), `expected 401/403, got ${res.status}`);
 });
 
-console.log("\n--- game flow ---");
+console.log("\n--- lifecycle ---");
 
 async function twoPlayerGame() {
   const a = browser(), b = browser();
@@ -163,7 +167,7 @@ async function twoPlayerGame() {
   return { a, b, code };
 }
 
-await test("only the host can start, and only with 2+ players", async () => {
+await test("only the host can start, and only with enough players", async () => {
   const a = browser(), b = browser();
   const g = await create(a, "Alice");
   const code = g.body.code;
@@ -174,76 +178,6 @@ await test("only the host can start, and only with 2+ players", async () => {
   assert.strictEqual(notHost.status, 400);
   const ok = await a.post(`/api/games/${code}/action`, { type: "start_game" });
   assert.strictEqual(ok.status, 200, JSON.stringify(ok.body));
-});
-
-await test("starting deals each player a private hand", async () => {
-  const { a, b, code } = await twoPlayerGame();
-  await a.post(`/api/games/${code}/action`, { type: "start_game" });
-  const sa = await a.get(`/api/games/${code}/state`);
-  const sb = await b.get(`/api/games/${code}/state`);
-  assert.strictEqual(sa.body.privateState.hand.length, 5);
-  assert.strictEqual(sb.body.privateState.hand.length, 5);
-  assert.strictEqual(sa.body.privateState.pending, null);
-});
-
-await test("a pick is not visible to the other player before resolution", async () => {
-  const { a, b, code } = await twoPlayerGame();
-  await a.post(`/api/games/${code}/action`, { type: "start_game" });
-  const sa = await a.get(`/api/games/${code}/state`);
-  const tile = sa.body.privateState.hand[0];
-  await a.post(`/api/games/${code}/commit`, { tile });
-
-  const sb = await b.get(`/api/games/${code}/state`);
-  assert.strictEqual(sb.body.state.committed.length, 1, "commit is public");
-  // Bob's payload must not contain Alice's tile anywhere outside his own hand.
-  const withoutMine = JSON.stringify({ ...sb.body, privateState: null });
-  assert.ok(!withoutMine.includes(`"pending":${tile}`), "pick leaked to other player");
-
-  const ev = await b.get(`/api/games/${code}/events?since=0`);
-  const raw = JSON.stringify(ev.body);
-  assert.ok(!raw.includes("hand"), "hand leaked into the event log");
-  assert.ok(!raw.includes("pending"), "pending leaked into the event log");
-});
-
-await test("both committing resolves the round", async () => {
-  const { a, b, code } = await twoPlayerGame();
-  await a.post(`/api/games/${code}/action`, { type: "start_game" });
-  const ha = (await a.get(`/api/games/${code}/state`)).body.privateState.hand;
-  const hb = (await b.get(`/api/games/${code}/state`)).body.privateState.hand;
-  await a.post(`/api/games/${code}/commit`, { tile: ha[0] });
-  await b.post(`/api/games/${code}/commit`, { tile: hb.find((t) => t !== ha[0]) ?? hb[0] });
-
-  const s = await a.get(`/api/games/${code}/state`);
-  assert.strictEqual(s.body.state.round, 2, "round advanced");
-  assert.strictEqual(s.body.state.committed.length, 0, "commits cleared");
-  assert.strictEqual(Object.keys(s.body.state.tiles).length, 2, "both tiles claimed");
-  assert.strictEqual(s.body.privateState.hand.length, 4, "played card removed");
-});
-
-await test("simultaneous identical picks: lower seat wins, no double-claim", async () => {
-  const { a, b, code } = await twoPlayerGame();
-  await a.post(`/api/games/${code}/action`, { type: "start_game" });
-  const ha = (await a.get(`/api/games/${code}/state`)).body.privateState.hand;
-  const hb = (await b.get(`/api/games/${code}/state`)).body.privateState.hand;
-  const shared = ha.find((t) => hb.includes(t));
-  if (shared === undefined) return; // hands did not overlap this run
-  await Promise.all([
-    a.post(`/api/games/${code}/commit`, { tile: shared }),
-    b.post(`/api/games/${code}/commit`, { tile: shared }),
-  ]);
-  const s = await a.get(`/api/games/${code}/state`);
-  const owners = Object.values(s.body.state.tiles);
-  assert.strictEqual(new Set(owners).size, owners.length, "a tile was claimed twice");
-  assert.strictEqual(s.body.state.tiles[shared], s.body.you, "seat 0 should win the tie");
-});
-
-await test("cannot commit a tile that is not in your hand", async () => {
-  const { a, code } = await twoPlayerGame();
-  await a.post(`/api/games/${code}/action`, { type: "start_game" });
-  const hand = (await a.get(`/api/games/${code}/state`)).body.privateState.hand;
-  const notMine = [...Array(25).keys()].find((t) => !hand.includes(t));
-  const r = await a.post(`/api/games/${code}/commit`, { tile: notMine });
-  assert.strictEqual(r.status, 400);
 });
 
 await test("cannot join a game already under way", async () => {
@@ -259,13 +193,24 @@ console.log("\n--- event log and sync ---");
 await test("seq is gapless from 1", async () => {
   const { a, b, code } = await twoPlayerGame();
   await a.post(`/api/games/${code}/action`, { type: "start_game" });
-  const ha = (await a.get(`/api/games/${code}/state`)).body.privateState.hand;
-  const hb = (await b.get(`/api/games/${code}/state`)).body.privateState.hand;
-  await a.post(`/api/games/${code}/commit`, { tile: ha[0] });
-  await b.post(`/api/games/${code}/commit`, { tile: hb.find((t) => t !== ha[0]) ?? hb[0] });
+  await a.post(`/api/games/${code}/chat`, { text: "one" });
+  await b.post(`/api/games/${code}/chat`, { text: "two" });
   const ev = await a.get(`/api/games/${code}/events?since=0`);
   const seqs = ev.body.events.map((e) => e.seq);
+  assert.ok(seqs.length >= 5, `expected several events, got ${seqs.length}`);
   assert.deepStrictEqual(seqs, seqs.map((_, i) => i + 1), `gappy seq: ${seqs}`);
+});
+
+await test("concurrent writers still produce a gapless log", async () => {
+  const { a, b, code } = await twoPlayerGame();
+  await Promise.all([
+    ...Array.from({ length: 6 }, (_, i) => a.post(`/api/games/${code}/chat`, { text: `a${i}` })),
+    ...Array.from({ length: 6 }, (_, i) => b.post(`/api/games/${code}/chat`, { text: `b${i}` })),
+  ]);
+  const ev = await a.get(`/api/games/${code}/events?since=0`);
+  const seqs = ev.body.events.map((e) => e.seq);
+  assert.deepStrictEqual(seqs, seqs.map((_, i) => i + 1), `gappy seq under concurrency: ${seqs}`);
+  assert.strictEqual(new Set(seqs).size, seqs.length, "duplicate seq allocated");
 });
 
 await test("chat replays from the log after reload", async () => {

@@ -147,10 +147,9 @@ export function useGameSync(code: string) {
       }
       if (ev.seq === lastSeqRef.current + 1) {
         applyEvent(ev);
-        // Resolution rewrites every hand; the game start deals them.
-        if (ev.type === "round_resolved" || ev.type === "game_started") {
-          void refetchPrivate();
-        }
+        // Private state never travels in the log, so it cannot be derived by
+        // replay -- re-read it whenever an event may have changed it.
+        if (ev.type === "game_started") void refetchPrivate();
       } else if (ev.seq > lastSeqRef.current + 1) {
         // Gap: we missed something. Refetch rather than guess.
         void heal(lastSeqRef.current);

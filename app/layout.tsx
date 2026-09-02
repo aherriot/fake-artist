@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Multiplayer POC",
-  description: "Lobby / sync / reconnect harness for Next.js + Neon + Pusher",
+  title: "A Fake Artist Goes to New York",
+  description: "Online multiplayer drawing and deduction game",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

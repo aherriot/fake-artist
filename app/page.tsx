@@ -43,9 +43,9 @@ export default function Home() {
 
   return (
     <main style={{ maxWidth: 480 }}>
-      <h1>Multiplayer POC</h1>
+      <h1>A Fake Artist Goes to New York</h1>
       <p style={{ color: "#888" }}>
-        Proving lobby, realtime sync, reload-resume, and cleanup. Not RoboRally yet.
+        Lobby, realtime sync, and reload-resume are working. Game rules are next.
       </p>
 
       <label style={{ display: "block", marginTop: 24 }}>

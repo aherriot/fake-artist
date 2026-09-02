@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { useGameSync } from "@/lib/useGameSync";
 import { ErrorPanel } from "@/lib/ui/ErrorPanel";
-import { GRID_SIZE, ROUNDS, TILE_COUNT } from "@/lib/game/types";
+import { MIN_PLAYERS } from "@/lib/game/types";
 
-const COLORS = ["#e05", "#0a8", "#58f", "#fa0", "#a5f", "#5fa"];
+const COLORS = ["#e05", "#0a8", "#58f", "#fa0", "#a5f", "#5fa", "#f85", "#8f5", "#85f", "#5ff"];
 
 /**
  * The live game. Mounted ONLY once membership is confirmed, because
@@ -13,7 +13,7 @@ const COLORS = ["#e05", "#0a8", "#58f", "#fa0", "#a5f", "#5fa"];
  * snapshot -- and a non-member cannot authorise that subscription.
  */
 export default function GameView({ code }: { code: string }) {
-  const { sync, forceResync, refetchPrivate } = useGameSync(code.toUpperCase());
+  const { sync, forceResync } = useGameSync(code.toUpperCase());
   const [text, setText] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -28,21 +28,6 @@ export default function GameView({ code }: { code: string }) {
       const d = await res.json().catch(() => ({}));
       setActionError(d.error ?? "Action failed");
     }
-  }
-
-  /** Submit this round's SECRET pick. Nothing about it is broadcast. */
-  async function commit(tile: number) {
-    setActionError(null);
-    const res = await fetch(`/api/games/${code.toUpperCase()}/commit`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ tile }),
-    });
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}));
-      setActionError(d.error ?? "Commit failed");
-    }
-    await refetchPrivate();
   }
 
   async function send() {
@@ -79,13 +64,14 @@ export default function GameView({ code }: { code: string }) {
   return (
     <main style={{ maxWidth: 760 }}>
       <h1 style={{ marginBottom: 0 }}>
-        Game <span style={{ letterSpacing: 4 }}>{code.toUpperCase()}</span>
+        A Fake Artist Goes to New York
       </h1>
       <p style={{ color: "#888", marginTop: 4 }}>
-        Share this code. Status: <strong>{sync.status}</strong>
+        Room <strong style={{ letterSpacing: 4 }}>{code.toUpperCase()}</strong> — share this
+        code. Status: <strong>{sync.status}</strong>
       </p>
 
-      {/* Debug strip -- this is a test harness, so the sync internals are the UI. */}
+      {/* The sync internals are the UI while this is still a harness. */}
       <div style={debugStrip}>
         <span>conn: <b style={{ color: connColor(sync.conn) }}>{sync.conn}</b></span>
         <span>lastSeq: <b>{sync.lastSeq}</b></span>
@@ -100,17 +86,12 @@ export default function GameView({ code }: { code: string }) {
           <ul style={{ listStyle: "none", padding: 0 }}>
             {sync.players.map((p) => (
               <li key={p.id} style={{ marginBottom: 4 }}>
-                <span style={{ color: colorOf(p.id) }}>&#9632;</span>{" "}
-                {p.nickname}
+                <span style={{ color: colorOf(p.id) }}>&#9632;</span> {p.nickname}
                 {p.id === sync.hostId && <span style={{ color: "#888" }}> (host)</span>}
                 {p.id === sync.you && <span style={{ color: "#888" }}> (you)</span>}
                 <span style={{ color: sync.online.has(p.id) ? "#0a8" : "#666" }}>
                   {sync.online.has(p.id) ? " online" : " offline"}
                 </span>
-                <span style={{ color: "#888" }}> -- {sync.state.scores[p.id] ?? 0}</span>
-                {sync.status === "active" && sync.state.committed.includes(p.id) && (
-                  <span style={{ color: "#fa0" }}> committed</span>
-                )}
               </li>
             ))}
           </ul>
@@ -118,101 +99,35 @@ export default function GameView({ code }: { code: string }) {
           {sync.status === "lobby" && isHost && (
             <button
               onClick={() => act({ type: "start_game" })}
-              disabled={sync.players.length < 2}
+              disabled={sync.players.length < MIN_PLAYERS}
               style={miniBtn}
             >
-              Start game ({sync.players.length}/2 min)
+              Start game ({sync.players.length}/{MIN_PLAYERS} min)
             </button>
           )}
           {sync.status === "lobby" && !isHost && (
             <p style={{ color: "#888" }}>Waiting for host to start...</p>
           )}
-        </div>
-
-        <div>
-          <h2 style={h2}>
-            Board -- round {Math.min(sync.state.round, ROUNDS)}/{ROUNDS}{" "}
-            {sync.status === "complete" && <span style={{ color: "#0a8" }}>-- finished</span>}
-          </h2>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: `repeat(${GRID_SIZE}, 56px)`,
-              gap: 4,
-            }}
-          >
-            {Array.from({ length: TILE_COUNT }, (_, i) => {
-              const owner = sync.state.tiles[i];
-              const inHand = sync.privateState?.hand.includes(i) ?? false;
-              const isPending = sync.privateState?.pending === i;
-              return (
-                <div
-                  key={i}
-                  title={
-                    owner
-                      ? `claimed by ${sync.players.find((p) => p.id === owner)?.nickname}`
-                      : `tile ${i}`
-                  }
-                  style={{
-                    height: 56,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    // A dashed outline marks tiles in YOUR hand -- visible only
-                    // to you, because no one else's hand is ever sent here.
-                    border: isPending
-                      ? "2px solid #fa0"
-                      : inHand
-                        ? "2px dashed #888"
-                        : "1px solid #333",
-                    background: owner ? colorOf(owner) : "#1a1a1a",
-                    color: owner ? "#000" : "#555",
-                    fontSize: 12,
-                  }}
-                >
-                  {owner ? "" : i}
-                </div>
-              );
-            })}
-          </div>
           {actionError && <p style={{ color: "#f66" }}>{actionError}</p>}
         </div>
 
-        {sync.status === "active" && sync.privateState && (
-          <div>
-            <h2 style={h2}>Your hand (secret)</h2>
-            <p style={{ color: "#666", fontSize: 13, maxWidth: 220 }}>
-              Only you can see this. It is stored in your own <code>player_state</code>{" "}
-              row and never enters the event log.
-            </p>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {sync.privateState.hand.map((t) => (
-                <button
-                  key={t}
-                  onClick={() => commit(t)}
-                  disabled={sync.privateState?.pending !== null}
-                  style={{
-                    ...miniBtn,
-                    minWidth: 44,
-                    borderColor: sync.privateState?.pending === t ? "#fa0" : "#555",
-                    opacity: sync.privateState?.pending !== null ? 0.5 : 1,
-                  }}
-                >
-                  {t}
-                </button>
-              ))}
-              {sync.privateState.hand.length === 0 && (
-                <span style={{ color: "#666" }}>Hand empty.</span>
-              )}
+        {sync.status !== "lobby" && (
+          <div style={{ flex: 1, minWidth: 260 }}>
+            <h2 style={h2}>Game</h2>
+            <div
+              style={{
+                border: "1px dashed #444",
+                padding: 20,
+                color: "#666",
+                background: "#141414",
+              }}
+            >
+              Rules not implemented yet.
+              <br />
+              <br />
+              The lobby, realtime sync, reload-resume, private per-player state, and
+              cleanup all work. The canvas, roles, and voting go here.
             </div>
-            <p style={{ marginTop: 10, color: "#888", fontSize: 13 }}>
-              {sync.privateState.pending !== null
-                ? `Committed ${sync.privateState.pending}. Waiting for others...`
-                : "Pick a tile to commit."}
-            </p>
-            <p style={{ color: "#888", fontSize: 13 }}>
-              Committed: {sync.state.committed.length}/{sync.players.length}
-            </p>
           </div>
         )}
       </section>
@@ -262,32 +177,17 @@ const connColor = (c: string) =>
 const h2: React.CSSProperties = { fontSize: 14, textTransform: "uppercase", color: "#888" };
 
 const debugStrip: React.CSSProperties = {
-  display: "flex",
-  gap: 16,
-  alignItems: "center",
-  flexWrap: "wrap",
-  padding: "8px 12px",
-  marginTop: 16,
-  background: "#000",
-  border: "1px solid #333",
-  fontSize: 13,
+  display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap",
+  padding: "8px 12px", marginTop: 16, background: "#000",
+  border: "1px solid #333", fontSize: 13,
 };
 
 const miniBtn: React.CSSProperties = {
-  padding: "4px 10px",
-  fontFamily: "inherit",
-  fontSize: 13,
-  cursor: "pointer",
-  background: "#222",
-  color: "#eee",
-  border: "1px solid #555",
+  padding: "4px 10px", fontFamily: "inherit", fontSize: 13, cursor: "pointer",
+  background: "#222", color: "#eee", border: "1px solid #555",
 };
 
 const chatBox: React.CSSProperties = {
-  height: 160,
-  overflowY: "auto",
-  padding: 8,
-  background: "#000",
-  border: "1px solid #333",
-  fontSize: 14,
+  height: 160, overflowY: "auto", padding: 8, background: "#000",
+  border: "1px solid #333", fontSize: 14,
 };
