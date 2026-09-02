@@ -303,7 +303,7 @@ ok("an exhausted list falls back instead of failing a long match");
 
 
 // --- whose move is it -------------------------------------------------------
-const { turnStatus, listOf } = await import("../.test-build/game/status.js");
+const { turnStatus, headlineText, nameList } = await import("../.test-build/game/status.js");
 
 const P = [
   { id: "a", nickname: "Alice", seat: 0 },
@@ -313,12 +313,14 @@ const P = [
 const base2 = { ...initialGameState(), seatOrder: ["a", "b", "c"], round: 1, totalRounds: 3 };
 const ts = (state, you, extra = {}) =>
   turnStatus({ state, you, hostId: "a", players: P, privateState: null, ...extra });
+/** Headlines are segments now, so names can be coloured; flatten to assert. */
+const hl = (state, you, extra = {}) => headlineText(ts(state, you, extra).headline, P);
 
 // The single most important bit: does the viewer have to act?
 assert.strictEqual(ts({ ...base2, phase: "drawing", turnIndex: 0 }, "a").yours, true);
 assert.strictEqual(ts({ ...base2, phase: "drawing", turnIndex: 0 }, "b").yours, false);
-assert.match(ts({ ...base2, phase: "drawing", turnIndex: 0 }, "b").headline, /Alice/);
-assert.match(ts({ ...base2, phase: "drawing", turnIndex: 1 }, "b").headline, /Your turn/);
+assert.match(hl({ ...base2, phase: "drawing", turnIndex: 0 }, "b"), /Alice/);
+assert.match(hl({ ...base2, phase: "drawing", turnIndex: 1 }, "b"), /Your turn/);
 ok("drawing says whose turn it is, from either side");
 
 
@@ -330,7 +332,7 @@ ok("an optimistic vote is respected");
 // Only the accused guesses; only the others judge it.
 const guess = { ...base2, phase: "guess", accusedId: "c" };
 assert.strictEqual(ts(guess, "c").yours, true);
-assert.match(ts(guess, "a").headline, /Cara/);
+assert.match(hl(guess, "a"), /Cara/);
 const gv = { ...base2, phase: "guess_vote", accusedId: "c", guessVoted: [] };
 assert.strictEqual(ts(gv, "c", { privateState: { role: "fake" } }).yours, false,
   "the fake artist never judges their own guess");
@@ -341,15 +343,24 @@ ok("the guess and its judgement go to the right people");
 assert.strictEqual(ts({ ...base2, phase: "lobby" }, "a").yours, true, "host starts");
 assert.strictEqual(ts({ ...base2, phase: "lobby" }, "b").yours, false);
 assert.strictEqual(ts({ ...base2, phase: "reveal", results: [] }, "a").yours, true);
-assert.match(ts({ ...base2, phase: "reveal" }, "b").headline, /Alice/);
+assert.match(hl({ ...base2, phase: "reveal" }, "b"), /Alice/);
 assert.strictEqual(ts({ ...base2, phase: "complete" }, "a").yours, false, "nobody acts once it is over");
 ok("host-gated phases point at the host");
 
-assert.strictEqual(listOf(["A"]), "A");
-assert.strictEqual(listOf(["A", "B"]), "A and B");
-assert.strictEqual(listOf(["A", "B", "C"]), "A, B and C");
-assert.strictEqual(listOf(["A", "B", "C", "D"]), "A, B and 2 others");
+const L = (ids) => headlineText(nameList(ids), P);
+assert.strictEqual(L(["a"]), "Alice");
+assert.strictEqual(L(["a", "b"]), "Alice and Bob");
+assert.strictEqual(L(["a", "b", "c"]), "Alice, Bob and Cara");
+assert.strictEqual(L(["a", "b", "c", "d"]), "Alice, Bob, Cara and 1 other");
 ok("waiting lists read like a sentence at any length");
+
+// Names must survive as segments, not be flattened into the sentence, or the
+// UI cannot colour them.
+const waiting = ts({ ...base2, phase: "drawing", turnIndex: 0 }, "b");
+assert.ok(waiting.headline.some((x) => typeof x === "object" && x.player === "a"),
+  "the waited-on player is a segment, not baked into the string");
+assert.deepStrictEqual(waiting.waitingOn, ["a"], "waitingOn carries ids, not nicknames");
+ok("headlines keep player references addressable so they can be coloured");
 
 
 // --- remembered nickname ----------------------------------------------------

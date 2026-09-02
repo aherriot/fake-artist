@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { useGameSync } from "@/lib/useGameSync";
-import { Plaque, penVar } from "@/lib/ui/primitives";
+import { Plaque, penTextVar } from "@/lib/ui/primitives";
 
 export function Chat({ game }: { game: ReturnType<typeof useGameSync> }) {
   const { sync, sendChat, retryChat, discardChat } = game;
@@ -25,7 +25,7 @@ export function Chat({ game }: { game: ReturnType<typeof useGameSync> }) {
         )}
         {sync.chat.map((m, i) => (
           <p key={i} className="mb-1">
-            <span style={{ color: penVar(seatOf(m.playerId) + 1) }}>{m.nickname}</span>
+            <span style={{ color: penTextVar(seatOf(m.playerId) + 1) }}>{m.nickname}</span>
             <span className="text-label-700">: </span>
             <span className="text-label-300">{m.text}</span>
           </p>
@@ -33,7 +33,7 @@ export function Chat({ game }: { game: ReturnType<typeof useGameSync> }) {
         {/* Unconfirmed: visible at once, but clearly provisional. */}
         {sync.pending.chat.map((m) => (
           <p key={m.nonce} className={m.failed ? "mb-1" : "mb-1 opacity-50"}>
-            <span style={{ color: penVar(seatOf(m.playerId) + 1) }}>{m.nickname}</span>
+            <span style={{ color: penTextVar(seatOf(m.playerId) + 1) }}>{m.nickname}</span>
             <span className="text-label-700">: </span>
             <span className="text-label-300">{m.text}</span>
             {m.failed && (

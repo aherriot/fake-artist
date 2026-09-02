@@ -6,7 +6,7 @@ import { useGameSync } from "@/lib/useGameSync";
 import { fetchJson } from "@/lib/fetch-json";
 import { ErrorPanel } from "@/lib/ui/ErrorPanel";
 import { Canvas } from "@/lib/ui/Canvas";
-import { Button, Plaque, penVar } from "@/lib/ui/primitives";
+import { Button, Plaque } from "@/lib/ui/primitives";
 import { MIN_PLAYERS, currentDrawer, currentPass, PASSES } from "@/lib/game/types";
 import { Roster } from "./Roster";
 import { Chat } from "./Chat";

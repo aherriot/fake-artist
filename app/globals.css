@@ -81,6 +81,33 @@
   --color-pen-9: #6d4aa8;   /* violet  (extended) */
   --color-pen-10: #7a4419;  /* umber   (extended) */
 
+  /**
+   * The same identities, as TEXT on the dark UI.
+   *
+   * The pens above are tuned as ink on white paper and are wrong the other way
+   * round: six of the ten fail 4.5:1 against the wall, and seat 8 -- ink --
+   * lands at 1.09, which is invisible. These are the lightened counterparts,
+   * every one above 5.4:1, used whenever a player's NAME is coloured.
+   *
+   * Seat 8 becomes a light neutral rather than a lightened brown: its identity
+   * is "the neutral one", and lightening its hue both loses that and collides
+   * with seats 2 and 10.
+   *
+   * Seats 1 and 6 are pushed apart deliberately. Lightening two blues collapses
+   * them together (a separation of 27, against 90 on paper); this pair sits at
+   * 72, in line with the rest of the set.
+   */
+  --color-pen-1-ui: #7fa9f0;
+  --color-pen-2-ui: #e57722;
+  --color-pen-3-ui: #25b189;
+  --color-pen-4-ui: #d183ae;
+  --color-pen-5-ui: #c79320;
+  --color-pen-6-ui: #35c0d8;
+  --color-pen-7-ui: #8aab3c;
+  --color-pen-8-ui: #bdb2a8;
+  --color-pen-9-ui: #a48ecd;
+  --color-pen-10-ui: #d08a4e;
+
   /* --- Type. Serif for labels, grotesque for controls, mono for codes. --- */
   --font-display: var(--font-instrument-serif), Georgia, "Times New Roman", serif;
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;

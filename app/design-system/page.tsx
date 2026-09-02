@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import {
+  penTextVar,
   Button,
   Field,
   Frame,
@@ -104,7 +105,28 @@ export default function DesignSystem() {
         </Frame>
       </Section>
 
-      <Section n="04" title="Type">
+      <Section n="04" title="Names on the wall">
+        <p className="mb-4 max-w-2xl text-sm text-label-500">
+          The pens above are ink on white paper, and are wrong the other way round: six of the
+          ten fail contrast as text on the dark wall, and seat 8 — ink — lands at 1.09, which is
+          invisible. Every coloured name uses the lightened counterpart instead, all above
+          5.4:1.
+        </p>
+        <div className="flex flex-wrap gap-x-5 gap-y-2">
+          {PENS.map((s2) => (
+            <span key={s2} className="font-medium" style={{ color: penTextVar(s2) }}>
+              Player {s2}
+            </span>
+          ))}
+        </div>
+        <p className="mt-4 max-w-2xl text-xs text-label-500">
+          Seat 8 becomes a light neutral rather than a lightened brown — its identity is
+          &ldquo;the neutral one&rdquo;. Seats 1 and 6 are pushed apart deliberately: lightening
+          two blues collapses them together.
+        </p>
+      </Section>
+
+      <Section n="05" title="Type">
         <div className="space-y-6">
           <div>
             <p className="label-caps mb-2">Display · Instrument Serif</p>
@@ -124,7 +146,7 @@ export default function DesignSystem() {
         </div>
       </Section>
 
-      <Section n="05" title="Wall label">
+      <Section n="06" title="Wall label">
         <p className="mb-4 text-sm text-label-500">
           The signature element. Title, medium, catalogue number — and status, since
           <em> attribution</em> is both the museum term and this game&apos;s mechanic.
@@ -137,7 +159,7 @@ export default function DesignSystem() {
         />
       </Section>
 
-      <Section n="06" title="Artwork frame">
+      <Section n="07" title="Artwork frame">
         <p className="mb-4 text-sm text-label-500">
           The only light source in the room. Warm paper, a hairline edge, and a soft bloom
           that reads as gallery lighting rather than a CSS drop shadow.
@@ -151,7 +173,7 @@ export default function DesignSystem() {
         </Frame>
       </Section>
 
-      <Section n="07" title="Buttons">
+      <Section n="08" title="Buttons">
         <div className="flex flex-wrap items-center gap-3">
           <Button variant="primary">Submit line</Button>
           <Button variant="secondary">Undo</Button>
@@ -165,7 +187,7 @@ export default function DesignSystem() {
         </div>
       </Section>
 
-      <Section n="08" title="Players">
+      <Section n="09" title="Players">
         <Plaque className="max-w-sm space-y-2.5">
           <p className="label-caps mb-3">Six hands</p>
           <PlayerChip seat={1} name="Alice" host />
@@ -181,7 +203,7 @@ export default function DesignSystem() {
         </p>
       </Section>
 
-      <Section n="09" title="Status">
+      <Section n="10" title="Status">
         <div className="flex flex-wrap gap-2">
           <Pill>Lobby</Pill>
           <Pill tone="accent">Your turn</Pill>
@@ -191,7 +213,7 @@ export default function DesignSystem() {
         </div>
       </Section>
 
-      <Section n="10" title="Form controls">
+      <Section n="11" title="Form controls">
         <div className="grid gap-6 sm:grid-cols-2">
           <Field label="Name" placeholder="e.g. Hopper" />
           <Field label="Room code" placeholder="6P8942" mono maxLength={6} hint="Six characters, never O I 0 or 1." />
@@ -215,7 +237,7 @@ export default function DesignSystem() {
         </div>
       </Section>
 
-      <Section n="11" title="Voting">
+      <Section n="12" title="Voting">
         <div className="max-w-sm">
           <Choice
             label="Who is the fake artist?"
@@ -230,7 +252,7 @@ export default function DesignSystem() {
         </div>
       </Section>
 
-      <Section n="12" title="Disclosure and tabs">
+      <Section n="13" title="Disclosure and tabs">
         <Tabs
           tabs={[
             { label: "Rules", content: "Draw one continuous line on your turn. Two passes." },
@@ -248,7 +270,7 @@ export default function DesignSystem() {
         </div>
       </Section>
 
-      <Section n="13" title="Overlay">
+      <Section n="14" title="Overlay">
         <Button variant="secondary" onClick={() => setModal(true)}>
           Open the reveal
         </Button>

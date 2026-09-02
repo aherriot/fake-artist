@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import type { useGameSync } from "@/lib/useGameSync";
-import { Button, Plaque, penVar } from "@/lib/ui/primitives";
+import { Button, Plaque, penTextVar } from "@/lib/ui/primitives";
+import { PlayerName } from "@/lib/ui/PlayerName";
 import { useAction } from "@/lib/ui/useAction";
 import { clsx } from "clsx";
 
@@ -43,12 +44,13 @@ function DrawingPanel({ game, act, isHost }: { game: Game; act: Act; isHost: boo
   const skip = useAction(async () => act({ type: "skip_turn" }));
   const seats = sync.state.seatOrder;
   const drawer = seats[sync.state.turnIndex % Math.max(1, seats.length)];
-  const name = sync.players.find((p) => p.id === drawer)?.nickname ?? "they";
   if (drawer === sync.you || !isHost) return null;
   return (
     <Plaque className="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <p className="text-sm text-label-500">Is {name} holding things up?</p>
+        <p className="text-sm text-label-500">
+          Is <PlayerName id={drawer} players={sync.players} /> holding things up?
+        </p>
         {skip.error && <p role="alert" className="mt-1 text-sm text-danger">{skip.error}</p>}
       </div>
       <Button size="sm" variant="ghost" disabled={skip.pending} onClick={() => skip.run()}>
@@ -164,7 +166,6 @@ function RevealPanel({ game, act, isHost }: { game: Game; act: Act; isHost: bool
   const done = state.phase === "complete";
   if (!r) return null;
 
-  const nameOf = (id: string) => sync.players.find((p) => p.id === id)?.nickname ?? "someone";
   const seatOf = (id: string) => sync.players.find((p) => p.id === id)?.seat ?? 0;
   const fakeWon = r.winners.includes(r.fakeArtistId);
 
@@ -184,15 +185,20 @@ function RevealPanel({ game, act, isHost }: { game: Game; act: Act; isHost: bool
         The subject was <span className="text-accent-400">{r.topic}</span>
       </p>
       <p className="mt-2 text-sm text-label-300">
-        <b style={{ color: penVar(seatOf(r.fakeArtistId) + 1) }}>{nameOf(r.fakeArtistId)}</b> was
-        the fake artist.{" "}
-        {r.caught
-          ? r.guessAccepted
-            ? `Caught — but guessed "${r.guess}" and got away with it.`
-            : `Caught, and "${r.guess}" was not it.`
-          : r.accusedId
-            ? `The room accused ${nameOf(r.accusedId)} instead.`
-            : "The room could not agree, so they walked."}
+        <PlayerName id={r.fakeArtistId} players={sync.players} /> was the fake artist.{" "}
+        {r.caught ? (
+          r.guessAccepted ? (
+            <>Caught — but guessed &ldquo;{r.guess}&rdquo; and got away with it.</>
+          ) : (
+            <>Caught, and &ldquo;{r.guess}&rdquo; was not it.</>
+          )
+        ) : r.accusedId ? (
+          <>
+            The room accused <PlayerName id={r.accusedId} players={sync.players} /> instead.
+          </>
+        ) : (
+          <>The room could not agree, so they walked.</>
+        )}
       </p>
       <p className="mt-2 text-sm">
         {fakeWon ? (
@@ -217,17 +223,19 @@ function RevealPanel({ game, act, isHost }: { game: Game; act: Act; isHost: bool
                     <span
                       aria-hidden
                       className="inline-grid size-4 shrink-0 place-items-center rounded-[2px] font-mono text-[9px] text-wall-950"
-                      style={{ background: penVar(seatOf(targetId) + 1) }}
+                      style={{ background: penTextVar(seatOf(targetId) + 1) }}
                     >
                       {seatOf(targetId) + 1}
                     </span>
-                    <span className={wasFake ? "text-accent-400" : "text-label-100"}>
-                      {nameOf(targetId)}
-                    </span>
+                    <PlayerName id={targetId} players={sync.players} />
                     <span className="text-label-500">
-                      {voters.length} {voters.length === 1 ? "vote" : "votes"}
-                      {" — "}
-                      {voters.map(nameOf).join(", ")}
+                      {voters.length} {voters.length === 1 ? "vote" : "votes"} —{" "}
+                      {voters.map((v, i) => (
+                        <span key={v}>
+                          {i > 0 && ", "}
+                          <PlayerName id={v} players={sync.players} bold={false} />
+                        </span>
+                      ))}
                     </span>
                     {wasFake && <span className="label-caps text-accent-400">the fake artist</span>}
                   </li>
@@ -243,13 +251,11 @@ function RevealPanel({ game, act, isHost }: { game: Game; act: Act; isHost: bool
             <span
               aria-hidden
               className="grid size-5 place-items-center rounded-[2px] font-mono text-[10px] text-wall-950"
-              style={{ background: penVar(p.seat + 1) }}
+              style={{ background: penTextVar(p.seat + 1) }}
             >
               {p.seat + 1}
             </span>
-            <span className={p.id === sync.you ? "text-label-100" : "text-label-300"}>
-              {p.nickname}
-            </span>
+            <PlayerName id={p.id} players={sync.players} bold={p.id === sync.you} />
             <span className="ml-auto catalogue-no">{state.scores[p.id] ?? 0}</span>
           </li>
         ))}
@@ -273,7 +279,9 @@ function RevealPanel({ game, act, isHost }: { game: Game; act: Act; isHost: bool
         </>
       )}
       {done && (
-        <p className="mt-5 font-display text-2xl">{ranked[0]?.nickname} wins the match.</p>
+        <p className="mt-5 font-display text-2xl">
+          <PlayerName id={ranked[0]?.id} players={sync.players} /> wins the match.
+        </p>
       )}
     </Plaque>
   );

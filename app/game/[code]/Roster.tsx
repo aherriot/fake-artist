@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { clsx } from "clsx";
 import type { useGameSync } from "@/lib/useGameSync";
-import { Plaque, penVar } from "@/lib/ui/primitives";
+import { Plaque, penTextVar } from "@/lib/ui/primitives";
 import { useAction } from "@/lib/ui/useAction";
 import { hasVoted } from "@/lib/game/optimistic";
 
@@ -83,11 +83,14 @@ export function Roster({
               <span
                 aria-hidden
                 className="grid size-6 shrink-0 place-items-center rounded-[2px] font-mono text-[11px] text-wall-950"
-                style={{ background: penVar(p.seat + 1) }}
+                style={{ background: penTextVar(p.seat + 1) }}
               >
                 {p.seat + 1}
               </span>
-              <span className={clsx("truncate", online ? "text-label-100" : "text-label-700")}>
+              <span
+                className={clsx("truncate font-medium", !online && "opacity-50")}
+                style={{ color: penTextVar(p.seat + 1) }}
+              >
                 {p.nickname}
               </span>
 

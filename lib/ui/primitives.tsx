@@ -4,8 +4,17 @@ import { clsx } from "clsx";
 import type { ReactNode } from "react";
 
 export const PEN_COUNT = 10;
-/** Seat -> pen colour token. Seats are 1-indexed in the UI. */
+/** Seat -> pen colour, as ink on paper. For strokes and swatches. */
 export const penVar = (seat: number) => `var(--color-pen-${((seat - 1) % PEN_COUNT) + 1})`;
+
+/**
+ * Seat -> the same identity as TEXT on the dark UI.
+ *
+ * Never use `penVar` for text: those values are tuned for white paper and six
+ * of the ten fail contrast against the wall, seat 8 invisibly so.
+ */
+export const penTextVar = (seat: number) =>
+  `var(--color-pen-${((seat - 1) % PEN_COUNT) + 1}-ui)`;
 
 /* ------------------------------------------------------------------ Button */
 

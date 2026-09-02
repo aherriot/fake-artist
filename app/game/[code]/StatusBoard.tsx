@@ -3,6 +3,7 @@
 import { clsx } from "clsx";
 import type { SyncState } from "@/lib/useGameSync";
 import { turnStatus } from "@/lib/game/status";
+import { PlayerName } from "@/lib/ui/PlayerName";
 import { currentPass, PASSES } from "@/lib/game/types";
 import { useServerUnreachable } from "@/lib/ui/connection";
 
@@ -79,7 +80,13 @@ export function StatusBoard({ sync, code }: { sync: SyncState; code: string }) {
             )}
           >
             {status.yours && <span aria-hidden className="mr-1">▸</span>}
-            {status.headline}
+            {status.headline.map((seg, i) =>
+              typeof seg === "string" ? (
+                <span key={i}>{seg}</span>
+              ) : (
+                <PlayerName key={i} id={seg.player} players={sync.players} bold={false} />
+              ),
+            )}
           </p>
           {status.detail && <p className="mt-1 text-sm text-label-500">{status.detail}</p>}
         </div>

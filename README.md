@@ -124,6 +124,12 @@ Two things in the palette are deliberate departures worth knowing:
 - **Colour never carries attribution alone.** Past about eight categories no
   palette stays reliably distinguishable for anyone, and this game supports
   ten players — so every stroke also carries its seat number.
+- **There are two pen ramps, and using the wrong one is a real bug.**
+  `penVar()` is ink on white paper, for strokes and swatches. `penTextVar()` is
+  the lightened counterpart for names on the dark UI: six of the ten pens fail
+  contrast as text against the wall, and seat 8 — ink — sits at 1.09, which is
+  invisible. Player names are coloured everywhere they appear, so this matters
+  in prose as much as in the roster.
 
 `@theme static` in `globals.css` is load-bearing: Tailwind v4 tree-shakes theme
 variables no utility class references, and the pen colours are consumed through
