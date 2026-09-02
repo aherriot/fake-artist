@@ -4,12 +4,12 @@ import { useState } from "react";
 import { useGameSync } from "@/lib/useGameSync";
 import { ErrorPanel } from "@/lib/ui/ErrorPanel";
 import { Canvas } from "@/lib/ui/Canvas";
-import { Button, Pill, Plaque, WallLabel, penVar } from "@/lib/ui/primitives";
+import { Button, Plaque, penVar } from "@/lib/ui/primitives";
 import { hasVoted, isReady } from "@/lib/game/optimistic";
 import { MIN_PLAYERS, currentDrawer, currentPass, PASSES } from "@/lib/game/types";
-import { RoleCard } from "./RoleCard";
 import { Roster } from "./Roster";
 import { Chat } from "./Chat";
+import { StatusBoard } from "./StatusBoard";
 import { PhasePanel } from "./PhasePanel";
 
 /** Phases whose panel is the point of the screen, not an aside to it. */
@@ -58,28 +58,10 @@ export default function GameView({ code }: { code: string }) {
 
   return (
     <main className="mx-auto max-w-6xl px-5 py-8">
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <WallLabel
-          title={state.category ?? "A Fake Artist Goes to New York"}
-          medium={
-            state.phase === "lobby"
-              ? "Waiting for players"
-              : `${sync.players.length} hands, ink on paper — round ${state.round} of ${state.totalRounds}`
-          }
-          catalogue={code.toUpperCase()}
-          status={<PhaseBadge phase={state.phase} yourTurn={yourTurn} />}
-        />
-        <div className="flex items-center gap-3 text-xs text-label-500">
-          <span>
-            conn{" "}
-            <b style={{ color: connColor(sync.conn) }}>{sync.conn}</b>
-          </span>
-          <span>seq <b className="text-label-300">{sync.lastSeq}</b></span>
-          <button onClick={g.forceResync} className="underline hover:text-label-300">
-            resync
-          </button>
-        </div>
-      </header>
+
+      <div className="mb-6">
+        <StatusBoard sync={sync} code={code.toUpperCase()} />
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <section>
@@ -136,7 +118,6 @@ export default function GameView({ code }: { code: string }) {
         </section>
 
         <aside className="space-y-5">
-          {state.phase !== "lobby" && !RESOLVING.has(state.phase) && <RoleCard sync={sync} />}
           <Roster
             sync={sync}
             drawer={drawer}
@@ -153,39 +134,8 @@ export default function GameView({ code }: { code: string }) {
         </div>
       )}
 
-      {state.phase === "drawing" && (
-        <p className="mt-6 text-xs text-label-500">
-          Pass {currentPass(state)} of {PASSES}
-          {drawer && (
-            <>
-              {" — "}
-              <span style={{ color: penVar((sync.players.find((p) => p.id === drawer)?.seat ?? 0) + 1) }}>
-                {sync.players.find((p) => p.id === drawer)?.nickname}
-              </span>
-              {" is drawing"}
-            </>
-          )}
-        </p>
-      )}
     </main>
   );
-}
-
-function PhaseBadge({ phase, yourTurn }: { phase: string; yourTurn: boolean }) {
-  if (phase === "drawing" && yourTurn) return <Pill tone="accent">Your turn</Pill>;
-  const map: Record<string, { tone: "neutral" | "accent" | "success" | "warning"; label: string }> = {
-    lobby: { tone: "neutral", label: "Lobby" },
-    drawing: { tone: "neutral", label: "Drawing" },
-    discussion: { tone: "warning", label: "Discussion" },
-    voting: { tone: "warning", label: "Voting" },
-    runoff: { tone: "warning", label: "Runoff" },
-    guess: { tone: "accent", label: "The guess" },
-    guess_vote: { tone: "accent", label: "Judging the guess" },
-    reveal: { tone: "success", label: "Attributed" },
-    complete: { tone: "success", label: "Match over" },
-  };
-  const m = map[phase] ?? { tone: "neutral" as const, label: phase };
-  return <Pill tone={m.tone}>{m.label}</Pill>;
 }
 
 const connColor = (c: string) =>

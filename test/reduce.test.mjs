@@ -291,4 +291,61 @@ const exhausted = pickPair(all, CATEGORIES.map((c) => c.category));
 assert.ok(exhausted.topic && exhausted.category, "must still return a pair when exhausted");
 ok("an exhausted list falls back instead of failing a long match");
 
+
+// --- whose move is it -------------------------------------------------------
+const { turnStatus, listOf } = await import("../.test-build/status.js");
+
+const P = [
+  { id: "a", nickname: "Alice", seat: 0 },
+  { id: "b", nickname: "Bob", seat: 1 },
+  { id: "c", nickname: "Cara", seat: 2 },
+];
+const base2 = { ...initialGameState(), seatOrder: ["a", "b", "c"], round: 1, totalRounds: 3 };
+const ts = (state, you, extra = {}) =>
+  turnStatus({ state, you, hostId: "a", players: P, privateState: null, ...extra });
+
+// The single most important bit: does the viewer have to act?
+assert.strictEqual(ts({ ...base2, phase: "drawing", turnIndex: 0 }, "a").yours, true);
+assert.strictEqual(ts({ ...base2, phase: "drawing", turnIndex: 0 }, "b").yours, false);
+assert.match(ts({ ...base2, phase: "drawing", turnIndex: 0 }, "b").headline, /Alice/);
+assert.match(ts({ ...base2, phase: "drawing", turnIndex: 1 }, "b").headline, /Your turn/);
+ok("drawing says whose turn it is, from either side");
+
+// Readiness and votes flip the viewer from acting to waiting, and name who on.
+const disc = { ...base2, phase: "discussion", ready: ["a"] };
+assert.strictEqual(ts(disc, "b").yours, true, "not yet ready -> must act");
+assert.strictEqual(ts(disc, "a").yours, false, "already ready -> waiting");
+assert.match(ts(disc, "a").headline, /Bob and Cara/, "names who is holding it up");
+ok("discussion names exactly who is still to press Ready");
+
+// Optimistic flags stop the board flickering back to "your move".
+assert.strictEqual(ts(disc, "b", { ready: true }).yours, false, "optimistic ready counts");
+const vote = { ...base2, phase: "voting", voted: [] };
+assert.strictEqual(ts(vote, "a", { voted: true }).yours, false, "optimistic vote counts");
+ok("optimistic readiness and votes are respected");
+
+// Only the accused guesses; only the others judge it.
+const guess = { ...base2, phase: "guess", accusedId: "c" };
+assert.strictEqual(ts(guess, "c").yours, true);
+assert.match(ts(guess, "a").headline, /Cara/);
+const gv = { ...base2, phase: "guess_vote", accusedId: "c", guessVoted: [] };
+assert.strictEqual(ts(gv, "c", { privateState: { role: "fake" } }).yours, false,
+  "the fake artist never judges their own guess");
+assert.strictEqual(ts(gv, "a", { privateState: { role: "artist" } }).yours, true);
+ok("the guess and its judgement go to the right people");
+
+// Host-gated phases.
+assert.strictEqual(ts({ ...base2, phase: "lobby" }, "a").yours, true, "host starts");
+assert.strictEqual(ts({ ...base2, phase: "lobby" }, "b").yours, false);
+assert.strictEqual(ts({ ...base2, phase: "reveal", results: [] }, "a").yours, true);
+assert.match(ts({ ...base2, phase: "reveal" }, "b").headline, /Alice/);
+assert.strictEqual(ts({ ...base2, phase: "complete" }, "a").yours, false, "nobody acts once it is over");
+ok("host-gated phases point at the host");
+
+assert.strictEqual(listOf(["A"]), "A");
+assert.strictEqual(listOf(["A", "B"]), "A and B");
+assert.strictEqual(listOf(["A", "B", "C"]), "A, B and C");
+assert.strictEqual(listOf(["A", "B", "C", "D"]), "A, B and 2 others");
+ok("waiting lists read like a sentence at any length");
+
 console.log(`\nAll ${n} state-machine invariants hold.`);

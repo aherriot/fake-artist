@@ -35,11 +35,7 @@ export function PhasePanel({
       const waiting = sync.players.filter((p) => !state.ready.includes(p.id));
       return (
         <Plaque>
-          <p className="label-caps">Discussion</p>
-          <p className="mt-2 text-sm text-label-300">
-            Talk it over. Who drew like someone who did not know what this was?
-          </p>
-          <div className="mt-4 flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <Button variant={ready ? "secondary" : "primary"} disabled={ready} onClick={() => act({ type: "ready" })}>
               {ready ? "Ready — waiting for others" : "Ready to vote"}
             </Button>
@@ -69,14 +65,9 @@ export function PhasePanel({
       return (
         <Plaque>
           <p className="label-caps">
-            {state.phase === "runoff" ? "Runoff — the vote was tied" : "Vote"}
+            {voted ? "Your vote is in" : "Choose"}
           </p>
-          <p className="mt-2 text-sm text-label-300">
-            {voted
-              ? "Your vote is in. Nobody sees it until everyone has voted."
-              : "Who is the fake artist? Votes are revealed together."}
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
+          <div className="mt-3 flex flex-wrap gap-2">
             {candidates
               .filter((p) => p.id !== sync.you)
               .map((p) => (
@@ -134,18 +125,17 @@ function DrawingPanel({
 }) {
   const { sync } = game;
   const drawer = sync.state.seatOrder[sync.state.turnIndex % Math.max(1, sync.state.seatOrder.length)];
-  if (drawer === sync.you) return null;
+  // The status board already says whose turn it is; all that is left here is
+  // the host's escape hatch for a player who has wandered off.
+  if (drawer === sync.you || !isHost) return null;
   return (
     <Plaque className="flex flex-wrap items-center justify-between gap-3">
-      <p className="text-sm text-label-300">
-        Waiting for <b className="text-label-100">{nameOf(drawer)}</b> to draw their line.
+      <p className="text-sm text-label-500">
+        {nameOf(drawer)} is holding things up?
       </p>
-      {isHost && (
-        // No timers in v1: a stalled game is the host's to unstick.
-        <Button size="sm" variant="ghost" onClick={() => act({ type: "skip_turn" })}>
-          Skip them
-        </Button>
-      )}
+      <Button size="sm" variant="ghost" onClick={() => act({ type: "skip_turn" })}>
+        Skip their turn
+      </Button>
     </Plaque>
   );
 }
@@ -179,11 +169,8 @@ function GuessPanel({ game }: { game: ReturnType<typeof useGameSync> }) {
   }
   return (
     <Plaque className="border-accent-500/50">
-      <p className="label-caps">You were caught</p>
-      <p className="mt-2 text-sm text-label-300">
-        One guess at the subject. Get it right and you still win the round.
-      </p>
-      <div className="mt-4 flex gap-2">
+      <p className="label-caps">Your guess</p>
+      <div className="mt-3 flex gap-2">
         <input
           autoFocus
           value={guess}
@@ -220,7 +207,7 @@ function GuessVotePanel({ game }: { game: ReturnType<typeof useGameSync> }) {
 
   return (
     <Plaque>
-      <p className="label-caps">Does that count?</p>
+      <p className="label-caps">They guessed</p>
       <p className="mt-2 font-display text-3xl">“{sync.state.guess}”</p>
       {fake ? (
         <p className="mt-3 text-sm text-label-500">
@@ -228,9 +215,6 @@ function GuessVotePanel({ game }: { game: ReturnType<typeof useGameSync> }) {
         </p>
       ) : (
         <>
-          <p className="mt-3 text-sm text-label-300">
-            Close enough to the real subject? A tie counts as accepted.
-          </p>
           <div className="mt-4 flex gap-2">
             <Button variant="secondary" disabled={sent} onClick={() => vote(true)}>
               That counts
