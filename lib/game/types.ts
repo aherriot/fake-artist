@@ -222,7 +222,8 @@ export type DraftEvent = GameEvent extends infer T
 export type GameAction =
   | { type: "start_match" }
   | { type: "skip_turn" }
-  | { type: "next_round" };
+  | { type: "next_round" }
+  | { type: "end_match" };
 
 export interface Snapshot {
   gameId: string;

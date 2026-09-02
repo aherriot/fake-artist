@@ -436,6 +436,62 @@ await test("the fake artist cannot judge their own guess", async () => {
   }
 });
 
+await test("the host can end the match early, and only between rounds", async () => {
+  const { bs, code } = await startedMatch();
+  const [host, other] = bs;
+
+  // Mid-round it must be refused.
+  const early = await host.post(`/api/games/${code}/action`, { type: "end_match" });
+  assert.strictEqual(early.status, 400, "must not end mid-round");
+  assert.match(early.body.error, /between rounds/i);
+
+  // Play a round to the reveal.
+  await drawAll(bs, code);
+  const seats = (await host.get(`/api/games/${code}/state`)).body.state.seatOrder;
+  const byId = {};
+  for (const b of bs) byId[(await b.get(`/api/games/${code}/state`)).body.you] = b;
+  for (let i = 0; i < seats.length; i++) {
+    await byId[seats[i]].post(`/api/games/${code}/vote`, { targetId: seats[(i + 1) % seats.length] });
+  }
+  // Force it to a reveal whichever branch the vote took.
+  let st = (await host.get(`/api/games/${code}/state`)).body.state;
+  if (st.phase === "runoff") {
+    for (let i = 0; i < seats.length; i++) {
+      await byId[seats[i]].post(`/api/games/${code}/vote`, { targetId: seats[(i + 1) % seats.length] });
+    }
+    st = (await host.get(`/api/games/${code}/state`)).body.state;
+  }
+  if (st.phase === "guess") {
+    for (const b of bs) {
+      const me = (await b.get(`/api/games/${code}/state`)).body;
+      if (me.privateState.role === "fake") await b.post(`/api/games/${code}/guess`, { guess: "no" });
+    }
+    for (const b of bs) {
+      const me = (await b.get(`/api/games/${code}/state`)).body;
+      if (me.privateState.role !== "fake") await b.post(`/api/games/${code}/guess-vote`, { accept: false });
+    }
+    st = (await host.get(`/api/games/${code}/state`)).body.state;
+  }
+  assert.strictEqual(st.phase, "reveal", `expected reveal, got ${st.phase}`);
+
+  // A non-host cannot end it.
+  const notHost = await other.post(`/api/games/${code}/action`, { type: "end_match" });
+  assert.strictEqual(notHost.status, 400, "only the host may end the match");
+
+  const ended = await host.post(`/api/games/${code}/action`, { type: "end_match" });
+  assert.strictEqual(ended.status, 200, JSON.stringify(ended.body));
+
+  const final = (await host.get(`/api/games/${code}/state`)).body;
+  assert.strictEqual(final.status, "complete", "the game is marked complete");
+  assert.strictEqual(final.state.phase, "complete");
+  assert.ok(final.state.results.length < final.state.totalRounds, "ended before the full run");
+  assert.ok(Object.values(final.state.scores).some((v) => v > 0), "final scores survive");
+
+  // Nothing further can be started.
+  const again = await host.post(`/api/games/${code}/action`, { type: "next_round" });
+  assert.strictEqual(again.status, 400, "a finished match cannot continue");
+});
+
 console.log("\n--- event log and sync ---");
 
 await test("seq is gapless from 1", async () => {

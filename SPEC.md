@@ -111,7 +111,11 @@ individually correct votes.
 
 ## Match structure
 
-- A series of **N rounds for N players**. Highest score at the end wins.
+- A series of **N rounds for N players**. Highest score at the end wins; ties
+  are reported as ties rather than broken.
+- The host may **end the match early**, but only at a reveal — stopping
+  mid-round would strand a drawing, a ballot, or a guess someone is part-way
+  through. It asks for confirmation, since it ends the game for everyone.
 - The Fake Artist is **not** a rotation and **not** "everyone exactly once".
   That rule sounds fair, and is, but it leaks: with N players over N rounds the
   final round is fully determined — everyone knows who the Fake Artist is

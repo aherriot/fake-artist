@@ -230,6 +230,15 @@ export function validateAction(
         return { ok: false, error: "The round is not finished" };
       return { ok: true };
 
+    case "end_match":
+      // Only between rounds: stopping mid-round would strand a drawing, a
+      // ballot, or a guess that people are part-way through.
+      if (ctx.playerId !== ctx.hostId)
+        return { ok: false, error: "Only the host can end the match" };
+      if (ctx.state.phase !== "reveal")
+        return { ok: false, error: "The match can only be ended between rounds" };
+      return { ok: true };
+
     default:
       return { ok: false, error: `Unknown action: ${action.type}` };
   }

@@ -31,8 +31,9 @@ export function PhasePanel({ game, act, isHost }: { game: Game; act: Act; isHost
     case "guess_vote":
       return <GuessVotePanel game={game} />;
     case "reveal":
-    case "complete":
       return <RevealPanel game={game} act={act} isHost={isHost} />;
+    case "complete":
+      return <FinalScores game={game} />;
     default:
       return null;
   }
@@ -162,9 +163,11 @@ function RevealPanel({ game, act, isHost }: { game: Game; act: Act; isHost: bool
   const { sync } = game;
   const { state } = sync;
   const next = useAction(async () => act({ type: "next_round" }));
+  const end = useAction(async () => act({ type: "end_match" }));
+  const [confirming, setConfirming] = useState(false);
   const r = state.results[state.results.length - 1];
-  const done = state.phase === "complete";
   if (!r) return null;
+  const lastRound = state.round >= state.totalRounds;
 
   const seatOf = (id: string) => sync.players.find((p) => p.id === id)?.seat ?? 0;
   const fakeWon = r.winners.includes(r.fakeArtistId);
@@ -180,7 +183,7 @@ function RevealPanel({ game, act, isHost }: { game: Game; act: Act; isHost: bool
 
   return (
     <Plaque className="border-success/40">
-      <p className="label-caps">{done ? "Final attribution" : "Attribution"}</p>
+      <p className="label-caps">Attribution</p>
       <p className="mt-2 font-display text-3xl">
         The subject was <span className="text-accent-400">{r.topic}</span>
       </p>
@@ -261,28 +264,129 @@ function RevealPanel({ game, act, isHost }: { game: Game; act: Act; isHost: bool
         ))}
       </ol>
 
-      {!done && isHost && (
-        <>
-          <Button
-            variant="primary"
-            className="mt-5"
-            disabled={next.pending}
-            onClick={() => next.run()}
-          >
-            {next.pending
-              ? "Starting…"
-              : state.round >= state.totalRounds
-                ? "Finish the match"
-                : "Next round"}
+      {isHost ? (
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <Button variant="primary" disabled={next.pending} onClick={() => next.run()}>
+            {next.pending ? "Starting…" : lastRound ? "Finish the match" : "Next round"}
           </Button>
-          {next.error && <p role="alert" className="mt-2 text-sm text-danger">{next.error}</p>}
-        </>
+          {/* Stopping early ends it for everyone, so it asks first. */}
+          {!lastRound &&
+            (confirming ? (
+              <span className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-label-300">
+                  End it after {state.round} of {state.totalRounds} rounds?
+                </span>
+                <Button size="sm" variant="danger" disabled={end.pending} onClick={() => end.run()}>
+                  {end.pending ? "Ending…" : "Yes, end it"}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
+                  Keep playing
+                </Button>
+              </span>
+            ) : (
+              <Button size="sm" variant="ghost" onClick={() => setConfirming(true)}>
+                End match here
+              </Button>
+            ))}
+          {(next.error || end.error) && (
+            <p role="alert" className="w-full text-sm text-danger">{next.error ?? end.error}</p>
+          )}
+        </div>
+      ) : (
+        <p className="mt-5 text-sm text-label-500">Waiting for the host to continue…</p>
       )}
-      {done && (
-        <p className="mt-5 font-display text-2xl">
-          <PlayerName id={ranked[0]?.id} players={sync.players} /> wins the match.
-        </p>
+    </Plaque>
+  );
+}
+
+/**
+ * The end of the match.
+ *
+ * Deliberately not the reveal panel with a different heading: at this point
+ * the last round's attribution is history, and what people want is the
+ * scoreboard and a recap of what happened.
+ */
+function FinalScores({ game }: { game: Game }) {
+  const { sync } = game;
+  const { state } = sync;
+  const ranked = [...sync.players].sort(
+    (a, b) => (state.scores[b.id] ?? 0) - (state.scores[a.id] ?? 0),
+  );
+  const top = state.scores[ranked[0]?.id] ?? 0;
+  // A tie is entirely possible and saying "Alice wins" would be a lie.
+  const winners = ranked.filter((p) => (state.scores[p.id] ?? 0) === top);
+  const early = state.results.length < state.totalRounds;
+
+  return (
+    <Plaque className="border-success/40">
+      <p className="label-caps">Match over</p>
+
+      <p className="mt-2 font-display text-3xl">
+        {winners.length === 1 ? (
+          <>
+            <PlayerName id={winners[0].id} players={sync.players} /> wins
+          </>
+        ) : (
+          <>
+            {winners.map((w, i) => (
+              <span key={w.id}>
+                {i > 0 && (i === winners.length - 1 ? " and " : ", ")}
+                <PlayerName id={w.id} players={sync.players} />
+              </span>
+            ))}
+            {" tie"}
+          </>
+        )}
+        {top > 0 && <span className="text-label-500"> on {top}</span>}
+      </p>
+      <p className="mt-1 text-sm text-label-500">
+        {state.results.length} round{state.results.length === 1 ? "" : "s"} played
+        {early && ` of ${state.totalRounds} — ended early`}
+      </p>
+
+      <ol className="mt-5 space-y-1">
+        {ranked.map((p, i) => (
+          <li key={p.id} className="flex items-center gap-2 text-sm">
+            <span className="w-4 text-right catalogue-no">{i + 1}</span>
+            <span
+              aria-hidden
+              className="grid size-5 place-items-center rounded-[2px] font-mono text-[10px] text-wall-950"
+              style={{ background: penTextVar(p.seat + 1) }}
+            >
+              {p.seat + 1}
+            </span>
+            <PlayerName id={p.id} players={sync.players} bold={p.id === sync.you} />
+            <span className="ml-auto catalogue-no">{state.scores[p.id] ?? 0}</span>
+          </li>
+        ))}
+      </ol>
+
+      {state.results.length > 0 && (
+        <div className="mt-6 border-t border-wall-500 pt-4">
+          <p className="label-caps mb-2">How it went</p>
+          <ul className="space-y-1.5 text-sm">
+            {state.results.map((res) => (
+              <li key={res.round} className="flex flex-wrap items-baseline gap-x-2">
+                <span className="catalogue-no">{res.round}</span>
+                <span className="text-label-100">{res.topic}</span>
+                <span className="text-label-500">
+                  — <PlayerName id={res.fakeArtistId} players={sync.players} bold={false} /> faked
+                  it and{" "}
+                  {res.winners.includes(res.fakeArtistId) ? (
+                    <span className="text-accent-400">got away with it</span>
+                  ) : (
+                    <span className="text-success">was caught</span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
+
+      <Button variant="secondary" href="/" className="mt-6">
+        Start another match
+      </Button>
     </Plaque>
   );
 }

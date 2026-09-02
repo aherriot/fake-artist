@@ -116,7 +116,7 @@ export function StatusBoard({ sync, code }: { sync: SyncState; code: string }) {
         )}
 
         {/* Revealed: the subject is public, so everyone sees the same thing. */}
-        {revealing && lastResult && (
+        {revealing && state.phase !== "complete" && lastResult && (
           <div className="sm:max-w-xs sm:text-right">
             <p className="label-caps">The subject was</p>
             <p className="mt-0.5 font-display text-2xl">{lastResult.topic}</p>

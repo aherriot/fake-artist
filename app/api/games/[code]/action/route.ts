@@ -60,6 +60,11 @@ async function postHandler(req: Request, { params }: { params: Promise<{ code: s
     }
 
 
+    if (action.type === "end_match") {
+      events.push({ type: "match_ended", payload: { at: new Date().toISOString() } });
+      return { ok: true as const, produced: { events, status: "complete" as const } };
+    }
+
     if (action.type === "next_round") {
       const next = ctx.state.round + 1;
       if (next > ctx.state.totalRounds) {

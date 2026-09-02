@@ -197,6 +197,16 @@ assert.strictEqual(validateAction({ type: "skip_turn" }, drawingCtx).ok, true, "
 assert.strictEqual(
   validateAction({ type: "skip_turn" }, { ...drawingCtx, playerId: B }).ok, false, "host only");
 assert.strictEqual(validateAction({ type: "open_voting" }, hostCtx).ok, false, "open_voting no longer exists");
+
+// Ending early: host only, and only between rounds.
+const revealCtx = { ...hostCtx, state: { ...d, phase: "reveal" } };
+assert.strictEqual(validateAction({ type: "end_match" }, revealCtx).ok, true, "host may end at a reveal");
+assert.strictEqual(
+  validateAction({ type: "end_match" }, { ...revealCtx, playerId: B }).ok, false, "host only");
+assert.strictEqual(
+  validateAction({ type: "end_match" }, drawingCtx).ok, false, "cannot end mid-round");
+assert.match(
+  validateAction({ type: "end_match" }, drawingCtx).error, /between rounds/i);
 assert.strictEqual(validateAction({ type: "ready" }, hostCtx).ok, false, "ready no longer exists");
 ok("action validation enforces host-only and phase");
 
