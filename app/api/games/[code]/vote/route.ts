@@ -30,14 +30,15 @@ async function postHandler(req: Request, { params }: { params: Promise<{ code: s
 
   const result = await mutatePlayer(code.toUpperCase(), playerId, async (ctx, tx) => {
     const priv = ctx.priv as unknown as PrivateState;
-    const check = validateVote(targetId, {
-      state: ctx.state,
-      playerId,
-      alreadyVoted: priv.vote !== null,
-    });
+    const check = validateVote(targetId, { state: ctx.state, playerId });
     if (!check.ok) return { ok: false as const, error: check.error };
 
-    const events: DraftEvent[] = [{ type: "player_voted", payload: { playerId } }];
+    // Changing an existing vote is not news: the public fact "they have voted"
+    // is already recorded, and re-announcing it would be a duplicate event.
+    const changing = priv.vote !== null;
+    const events: DraftEvent[] = changing
+      ? []
+      : [{ type: "player_voted", payload: { playerId } }];
 
     // Who still owes a vote? In a runoff the tied players vote too, but a
     // player may never vote for themselves, so they are excluded from their

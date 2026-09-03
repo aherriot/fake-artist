@@ -177,6 +177,12 @@ function RevealPanel({ game, act, isHost }: { game: Game; act: Act; isHost: bool
   for (const [voter, target] of Object.entries(r.votes)) {
     (counts[target] ??= { voters: [] }).voters.push(voter);
   }
+  // Most-accused first: that is the story of the round. Seat order breaks ties
+  // so the ordering is stable rather than arbitrary.
+  const byVotes = [...sync.players].sort((a, b) => {
+    const d = (counts[b.id]?.voters.length ?? 0) - (counts[a.id]?.voters.length ?? 0);
+    return d !== 0 ? d : a.seat - b.seat;
+  });
   const ranked = [...sync.players].sort(
     (a, b) => (state.scores[b.id] ?? 0) - (state.scores[a.id] ?? 0),
   );
@@ -211,58 +217,70 @@ function RevealPanel({ game, act, isHost }: { game: Game; act: Act; isHost: bool
         )}
       </p>
 
-      {/* The ballot, now public. Counts alone hide the interesting part --
-          who backed whom, and who was alone in being right. */}
-      {Object.keys(r.votes).length > 0 && (
-        <div className="mt-5 border-t border-wall-500 pt-4">
-          <p className="label-caps mb-2">The vote</p>
-          <ul className="space-y-1 text-sm">
-            {Object.entries(counts)
-              .sort((a, b) => b[1].voters.length - a[1].voters.length)
-              .map(([targetId, { voters }]) => {
-                const wasFake = targetId === r.fakeArtistId;
-                return (
-                  <li key={targetId} className="flex flex-wrap items-baseline gap-x-2">
-                    <span
-                      aria-hidden
-                      className="inline-grid size-4 shrink-0 place-items-center rounded-[2px] font-mono text-[9px] text-wall-950"
-                      style={{ background: penTextVar(seatOf(targetId) + 1) }}
-                    >
-                      {seatOf(targetId) + 1}
+      {/* ONE table, not three lists of the same people. Each row carries
+          everything about that player this round: who they voted for, how many
+          votes they drew, and where they now stand. */}
+      <div className="mt-5 border-t border-wall-500 pt-4">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-label-500">
+              <th className="label-caps py-1 text-left font-normal">Player</th>
+              <th className="label-caps py-1 text-left font-normal">Voted for</th>
+              <th className="label-caps py-1 text-right font-normal">Votes</th>
+              <th className="label-caps py-1 text-right font-normal">Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            {byVotes.map((p) => {
+              const isFake = p.id === r.fakeArtistId;
+              const received = counts[p.id]?.voters.length ?? 0;
+              return (
+                <tr
+                  key={p.id}
+                  className={clsx(
+                    "border-t border-wall-600",
+                    isFake && "bg-accent-500/5",
+                  )}
+                >
+                  <td className="py-1.5">
+                    <span className="flex items-center gap-2">
+                      <span
+                        aria-hidden
+                        className="grid size-5 shrink-0 place-items-center rounded-[2px] font-mono text-[10px] text-wall-950"
+                        style={{ background: penTextVar(p.seat + 1) }}
+                      >
+                        {p.seat + 1}
+                      </span>
+                      <PlayerName id={p.id} players={sync.players} bold={p.id === sync.you} />
+                      {isFake && (
+                        <span className="label-caps text-accent-400">Fake artist</span>
+                      )}
                     </span>
-                    <PlayerName id={targetId} players={sync.players} />
-                    <span className="text-label-500">
-                      {voters.length} {voters.length === 1 ? "vote" : "votes"} —{" "}
-                      {voters.map((v, i) => (
-                        <span key={v}>
-                          {i > 0 && ", "}
-                          <PlayerName id={v} players={sync.players} bold={false} />
-                        </span>
-                      ))}
-                    </span>
-                    {wasFake && <span className="label-caps text-accent-400">the fake artist</span>}
-                  </li>
-                );
-              })}
-          </ul>
-        </div>
-      )}
-
-      <ol className="mt-5 space-y-1">
-        {ranked.map((p) => (
-          <li key={p.id} className="flex items-center gap-2 text-sm">
-            <span
-              aria-hidden
-              className="grid size-5 place-items-center rounded-[2px] font-mono text-[10px] text-wall-950"
-              style={{ background: penTextVar(p.seat + 1) }}
-            >
-              {p.seat + 1}
-            </span>
-            <PlayerName id={p.id} players={sync.players} bold={p.id === sync.you} />
-            <span className="ml-auto catalogue-no">{state.scores[p.id] ?? 0}</span>
-          </li>
-        ))}
-      </ol>
+                  </td>
+                  <td className="py-1.5">
+                    {r.votes[p.id] ? (
+                      <PlayerName id={r.votes[p.id]} players={sync.players} bold={false} />
+                    ) : (
+                      <span className="text-label-700">—</span>
+                    )}
+                  </td>
+                  <td
+                    className={clsx(
+                      "py-1.5 text-right tabular-nums",
+                      received === 0 ? "text-label-700" : "text-label-100",
+                    )}
+                  >
+                    {received || "—"}
+                  </td>
+                  <td className="py-1.5 text-right catalogue-no">
+                    {state.scores[p.id] ?? 0}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
 
       {isHost ? (
         <div className="mt-5 flex flex-wrap items-center gap-3">

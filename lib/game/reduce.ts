@@ -268,15 +268,21 @@ export function validateStroke(
   return { ok: true, points: points as [number, number][] };
 }
 
-/** Validates a secret vote. */
+/**
+ * Validates a secret vote.
+ *
+ * A vote may be CHANGED for as long as the ballot is open. Nothing is revealed
+ * until every vote is in, so changing your mind leaks nothing to anyone -- and
+ * the alternative is that a misclick decides the round. The ballot closes by
+ * resolving on the last vote cast, which is what makes this safe.
+ */
 export function validateVote(
   targetId: string,
-  ctx: { state: GameState; playerId: string; alreadyVoted: boolean },
+  ctx: { state: GameState; playerId: string },
 ): { ok: true } | { ok: false; error: string } {
   const { state } = ctx;
   if (state.phase !== "voting" && state.phase !== "runoff")
     return { ok: false, error: "Voting is not open" };
-  if (ctx.alreadyVoted) return { ok: false, error: "You have already voted" };
   if (targetId === ctx.playerId) return { ok: false, error: "You cannot vote for yourself" };
   if (!state.seatOrder.includes(targetId))
     return { ok: false, error: "Not a player in this match" };

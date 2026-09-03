@@ -322,7 +322,35 @@ await test("votes stay secret until the last one lands", async () => {
   assert.ok(voteEvents.every((e) => !("targetId" in e.payload)), "ballot leaked into the log");
 });
 
-await test("a player cannot vote twice or for themselves", async () => {
+await test("a vote can be changed while the ballot is open, and the change counts", async () => {
+  const { bs, code } = await startedMatch();
+  await drawAll(bs, code);
+  const me = (await bs[0].get(`/api/games/${code}/state`)).body;
+  const others = me.state.seatOrder.filter((id) => id !== me.you);
+
+  const first = await bs[0].post(`/api/games/${code}/vote`, { targetId: others[0] });
+  assert.strictEqual(first.status, 200, JSON.stringify(first.body));
+  const changed = await bs[0].post(`/api/games/${code}/vote`, { targetId: others[1] });
+  assert.strictEqual(changed.status, 200, `changing should be allowed: ${JSON.stringify(changed.body)}`);
+
+  // Still counted once: changing your mind is not a second vote.
+  const st = (await bs[0].get(`/api/games/${code}/state`)).body.state;
+  assert.strictEqual(st.voted.filter((id) => id === me.you).length, 1, "counted once");
+
+  // The other two both accuse the SAME player, so there is a clear plurality.
+  // A tie would open a runoff, and a runoff clears state.votes -- which would
+  // make this assertion fail for a reason that has nothing to do with changing
+  // a vote.
+  for (const b of bs.slice(1)) {
+    await b.post(`/api/games/${code}/vote`, { targetId: me.you });
+  }
+  const after = (await bs[0].get(`/api/games/${code}/state`)).body.state;
+  assert.notStrictEqual(after.phase, "runoff", "this scenario must not tie");
+  assert.strictEqual(after.votes[me.you], others[1], "the changed vote is the one that counted");
+  assert.notStrictEqual(after.votes[me.you], others[0], "the original vote was replaced");
+});
+
+await test("a player cannot vote for themselves", async () => {
   const { bs, code } = await startedMatch();
   await drawAll(bs, code);
   const me = (await bs[0].get(`/api/games/${code}/state`)).body;
@@ -330,9 +358,10 @@ await test("a player cannot vote twice or for themselves", async () => {
 
   const self = await bs[0].post(`/api/games/${code}/vote`, { targetId: me.you });
   assert.strictEqual(self.status, 400, "self-vote rejected");
-  await bs[0].post(`/api/games/${code}/vote`, { targetId: other });
-  const twice = await bs[0].post(`/api/games/${code}/vote`, { targetId: other });
-  assert.strictEqual(twice.status, 400, "double vote rejected");
+  assert.match(self.body.error, /yourself/i);
+  const unknown = await bs[0].post(`/api/games/${code}/vote`, { targetId: "not-a-player" });
+  assert.strictEqual(unknown.status, 400, "unknown target rejected");
+  void other;
 });
 
 await test("a complete round reaches a reveal and scores someone", async () => {

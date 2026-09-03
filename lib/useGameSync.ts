@@ -407,15 +407,19 @@ export function useGameSync(code: string) {
     [optimisticPost, sync.you, sync.players],
   );
 
+  /** Cast or change a vote. Changing is allowed until the ballot closes. */
   const castVote = useCallback(
-    (targetId: string) =>
-      optimisticPost(
+    async (targetId: string) => {
+      const previous = sync.pending.votedFor;
+      const err = await optimisticPost(
         "/vote",
         { targetId },
-        (p) => ({ ...p, voted: true }),
-        (p) => ({ ...p, voted: false }),
-      ),
-    [optimisticPost],
+        (p) => ({ ...p, voted: true, votedFor: targetId }),
+        (p) => ({ ...p, voted: previous !== null, votedFor: previous }),
+      );
+      return err;
+    },
+    [optimisticPost, sync.pending.votedFor],
   );
 
   const forceResync = useCallback(() => {

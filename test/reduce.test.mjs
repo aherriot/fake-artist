@@ -180,15 +180,17 @@ assert.strictEqual(validateStroke("nope", { state: drawing, playerId: C }).ok, f
 ok("stroke validation enforces turn, shape, and bounds");
 
 const voting = reduce(d, { seq: 90, type: "voting_started", payload: { candidates: [] } });
-assert.strictEqual(validateVote(B, { state: voting, playerId: A, alreadyVoted: false }).ok, true);
-assert.strictEqual(validateVote(A, { state: voting, playerId: A, alreadyVoted: false }).ok, false, "no self-vote");
-assert.strictEqual(validateVote(B, { state: voting, playerId: A, alreadyVoted: true }).ok, false, "no double vote");
-assert.strictEqual(validateVote("zz", { state: voting, playerId: A, alreadyVoted: false }).ok, false, "unknown player");
+assert.strictEqual(validateVote(B, { state: voting, playerId: A }).ok, true);
+assert.strictEqual(validateVote(A, { state: voting, playerId: A }).ok, false, "no self-vote");
+// Changing your mind is allowed while the ballot is open: nothing is revealed
+// until every vote is in, so a misclick must not decide the round.
+assert.strictEqual(validateVote(C, { state: voting, playerId: A }).ok, true, "a vote may be changed");
+assert.strictEqual(validateVote("zz", { state: voting, playerId: A }).ok, false, "unknown player");
 // `s` is mid-drawing: the ballot is not open yet.
-assert.strictEqual(validateVote(B, { state: s, playerId: A, alreadyVoted: false }).ok, false, "voting not open during drawing");
+assert.strictEqual(validateVote(B, { state: s, playerId: A }).ok, false, "voting not open during drawing");
 const runoff = { ...voting, phase: "runoff", runoffCandidates: [A, B] };
-assert.strictEqual(validateVote(C, { state: runoff, playerId: A, alreadyVoted: false }).ok, false, "runoff is limited to tied players");
-ok("vote validation enforces phase, self-vote, duplicates and runoff set");
+assert.strictEqual(validateVote(C, { state: runoff, playerId: A }).ok, false, "runoff is limited to tied players");
+ok("vote validation enforces phase, self-vote and the runoff set, and allows changes");
 
 const hostCtx = { state: d, status: "active", playerId: A, hostId: A, playerCount: 3 };
 assert.strictEqual(validateAction({ type: "skip_turn" }, hostCtx).ok, false, "cannot skip outside drawing");

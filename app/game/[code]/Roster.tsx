@@ -51,22 +51,23 @@ export function Roster({
       ? state.runoffCandidates
       : sync.players.map((p) => p.id);
 
+  const yourPick = sync.pending.votedFor ?? sync.privateState?.vote ?? null;
+  // Voting stays open to changes: nothing is revealed until every vote is in,
+  // so a misclick should never decide the round.
   const canVoteFor = (id: string) =>
-    balloting && !voted && !cast.pending && id !== sync.you && candidates.includes(id);
+    balloting && !cast.pending && id !== sync.you && candidates.includes(id);
 
   return (
     <Plaque>
       <p className="label-caps mb-3">
-        {balloting
-          ? voted
-            ? "Your vote is in"
-            : "Who is the fake artist?"
-          : `${sync.players.length} hands`}
+        {balloting ? "Who is the fake artist?" : `${sync.players.length} hands`}
       </p>
 
-      {balloting && !voted && (
+      {balloting && (
         <p className="mb-3 text-sm text-label-500">
-          Tap whoever drew like they were guessing. Not yourself.
+          {voted
+            ? "Tap someone else to change your vote — nothing is revealed until everyone has voted."
+            : "Tap whoever drew like they were guessing. Not yourself."}
         </p>
       )}
 
@@ -74,9 +75,10 @@ export function Roster({
         {sync.players.map((p) => {
           const online = sync.online.has(p.id);
           const votable = canVoteFor(p.id);
+          const picked = balloting && yourPick === p.id;
           const isFake = result?.fakeArtistId === p.id;
           const votes = tally.get(p.id) ?? 0;
-          const dimmed = balloting && !voted && !votable;
+          const dimmed = balloting && !votable && !picked;
 
           const row = (
             <>
@@ -95,20 +97,13 @@ export function Roster({
               </span>
 
               <span className="ml-auto flex shrink-0 items-center gap-2 text-[11px]">
-                {/* Vote counts, once the ballot is public. */}
-                {result && votes > 0 && (
-                  <span
-                    className={clsx(
-                      "rounded-full px-2 py-0.5 font-medium",
-                      isFake ? "bg-accent-500/20 text-accent-400" : "bg-wall-600 text-label-300",
-                    )}
-                    title={`${votes} vote${votes === 1 ? "" : "s"}`}
-                  >
-                    {votes} {votes === 1 ? "vote" : "votes"}
-                  </span>
-                )}
+                {/* No vote counts here: the reveal panel carries the full
+                    breakdown, and repeating it made three lists of the same
+                    people on one screen. */}
                 {isFake && <span className="label-caps text-accent-400">Fake</span>}
-                {yourVote === p.id && <span className="label-caps">Your vote</span>}
+                {(yourVote === p.id || picked) && (
+                  <span className="label-caps text-accent-400">Your vote</span>
+                )}
                 {!revealing && state.scores[p.id] > 0 && (
                   <span className="catalogue-no">{state.scores[p.id]}</span>
                 )}
@@ -139,8 +134,9 @@ export function Roster({
                   onMouseLeave={() => onHighlight(null)}
                   className={clsx(
                     common,
-                    "border border-wall-500 bg-wall-900 hover:border-accent-500",
-                    pendingId === p.id && "border-accent-500 opacity-60",
+                    "border bg-wall-900 hover:border-accent-500",
+                    picked ? "border-accent-500 bg-accent-500/10" : "border-wall-500",
+                    pendingId === p.id && "opacity-60",
                   )}
                 >
                   {row}

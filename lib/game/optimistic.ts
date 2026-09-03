@@ -16,8 +16,11 @@ export interface Pending {
   chat: PendingChat[];
   /** Your own stroke, drawn locally the instant you submit it. */
   strokes: Stroke[];
-  /** You cast a vote (the target stays secret; only the fact is shown). */
+  /** You cast a vote (the target stays secret from others; only the fact
+   *  is public). */
   voted: boolean;
+  /** Who you picked, so your own choice shows before the server confirms. */
+  votedFor: string | null;
 }
 
 export interface PendingChat {
@@ -34,6 +37,7 @@ export const emptyPending = (): Pending => ({
   chat: [],
   strokes: [],
   voted: false,
+  votedFor: null,
 });
 
 /**
@@ -63,6 +67,9 @@ export function reconcile(
     chat: pending.chat.filter((c) => c.failed || !confirmedNonces.has(c.nonce)),
     strokes: pending.strokes.slice(Math.min(confirmedMine, pending.strokes.length)),
     voted: pending.voted && !(you !== null && state.voted.includes(you)),
+    // Kept until the round ends: it is the only record of your own choice
+    // until the ballot is revealed, and the server never broadcasts it.
+    votedFor: pending.votedFor,
   };
 }
 
@@ -79,5 +86,5 @@ export const hasVoted = (state: GameState, pending: Pending, you: string | null)
  * reset. Chat survives, since it spans rounds.
  */
 export function clearForNewRound(pending: Pending): Pending {
-  return { ...pending, strokes: [], voted: false };
+  return { ...pending, strokes: [], voted: false, votedFor: null };
 }
