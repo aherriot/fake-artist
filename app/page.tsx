@@ -195,10 +195,7 @@ export default function Home() {
       </Plaque>
 
       <p className="mt-8 text-xs text-label-500">
-        3 to 10 players. No account needed —{" "}
-        <a href="/design-system" className="underline hover:text-label-300">
-          design system
-        </a>
+        3 to 10 players. No account needed.
       </p>
     </main>
   );

@@ -52,6 +52,8 @@ export interface RoundResult {
   guess: string | null;
   guessAccepted: boolean | null;
   winners: string[];
+  /** The fake artist left mid-round, so nobody scores. */
+  voided?: boolean;
 }
 
 /** PUBLIC state. Broadcast to everyone; must never contain a secret. */
@@ -70,6 +72,13 @@ export interface GameState {
   voted: string[];
   /** Narrowed set during a runoff; empty otherwise. */
   runoffCandidates: string[];
+  /**
+   * Players the host has dropped from THIS round, so nothing waits on them.
+   * Cleared when the next round starts, so a dropped player is back in by
+   * default -- if they are still gone, the host drops them again. That is
+   * simpler and more forgiving than a match-level removal nobody can undo.
+   */
+  absent: string[];
   /** Revealed only when the round resolves. */
   votes: Record<string, string>;
   accusedId: string | null;
@@ -110,6 +119,7 @@ export function initialGameState(): GameState {
     strokes: [],
     voted: [],
     runoffCandidates: [],
+    absent: [],
     votes: {},
     accusedId: null,
     guess: null,
@@ -139,6 +149,7 @@ export function normalizeGameState(raw: Partial<GameState> | null | undefined): 
     strokes: arr(raw.strokes, base.strokes),
     voted: arr(raw.voted, base.voted),
     runoffCandidates: arr(raw.runoffCandidates, base.runoffCandidates),
+    absent: arr(raw.absent, base.absent),
     votes: obj(raw.votes, base.votes),
     accusedId: typeof raw.accusedId === "string" ? raw.accusedId : null,
     guess: typeof raw.guess === "string" ? raw.guess : null,
@@ -176,6 +187,8 @@ export type GameEvent =
     }
   | { seq: number; type: "stroke_drawn"; payload: Stroke }
   | { seq: number; type: "turn_skipped"; payload: { playerId: string } }
+  /** The host dropped a player from this round so it can finish without them. */
+  | { seq: number; type: "player_dropped"; payload: { playerId: string } }
   /** Only used to open a RUNOFF. The first vote opens itself, when the last
    *  line lands. */
   | { seq: number; type: "voting_started"; payload: { candidates: string[] } }
@@ -223,7 +236,8 @@ export type GameAction =
   | { type: "start_match" }
   | { type: "skip_turn" }
   | { type: "next_round" }
-  | { type: "end_match" };
+  | { type: "end_match" }
+  | { type: "drop_player"; playerId: string };
 
 export interface Snapshot {
   gameId: string;
@@ -243,12 +257,26 @@ export interface Snapshot {
 /** Total drawing turns in a round. */
 export const turnsInRound = (seats: number) => seats * PASSES;
 
-/** Whose turn it is, or null if drawing is over. */
+/**
+ * Whose turn it is, or null if drawing is over.
+ *
+ * A dropped player is skipped automatically, so the drawing does not stall on
+ * someone the host has already removed from the round.
+ */
 export function currentDrawer(state: GameState): string | null {
   const n = state.seatOrder.length;
-  if (n === 0 || state.turnIndex >= turnsInRound(n)) return null;
-  return state.seatOrder[state.turnIndex % n];
+  const turns = turnsInRound(n);
+  if (n === 0) return null;
+  for (let i = state.turnIndex; i < turns; i++) {
+    const id = state.seatOrder[i % n];
+    if (!state.absent.includes(id)) return id;
+  }
+  return null;
 }
+
+/** True once every remaining player has taken all their turns. */
+export const drawingFinished = (state: GameState) =>
+  state.seatOrder.length > 0 && currentDrawer(state) === null;
 
 /** Which pass (1-indexed) the drawing is in. */
 export const currentPass = (state: GameState) =>

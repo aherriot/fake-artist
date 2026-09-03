@@ -521,6 +521,101 @@ await test("the host can end the match early, and only between rounds", async ()
   assert.strictEqual(again.status, 400, "a finished match cannot continue");
 });
 
+await test("a player who vanishes mid-vote no longer deadlocks the round", async () => {
+  const { bs, code } = await startedMatch();
+  await drawAll(bs, code);
+  const [host, b2, b3] = bs;
+  const hostId = (await host.get(`/api/games/${code}/state`)).body.you;
+  const goneId = (await b3.get(`/api/games/${code}/state`)).body.you;
+
+  // Two vote; the third simply stops responding, as a dead phone would.
+  for (const b of [host, b2]) {
+    const me = (await b.get(`/api/games/${code}/state`)).body;
+    await b.post(`/api/games/${code}/vote`, {
+      targetId: me.state.seatOrder.find((id) => id !== me.you && id !== goneId),
+    });
+  }
+  let st = (await host.get(`/api/games/${code}/state`)).body.state;
+  assert.ok(["voting", "runoff"].includes(st.phase), "still waiting, as expected");
+  assert.strictEqual(st.voted.length, 2, "one vote outstanding");
+
+  // A non-host cannot drop anyone.
+  const notHost = await b2.post(`/api/games/${code}/action`, {
+    type: "drop_player", playerId: goneId,
+  });
+  assert.strictEqual(notHost.status, 400, "only the host may drop a player");
+
+  const drop = await host.post(`/api/games/${code}/action`, {
+    type: "drop_player", playerId: goneId,
+  });
+  assert.strictEqual(drop.status, 200, JSON.stringify(drop.body));
+
+  st = (await host.get(`/api/games/${code}/state`)).body.state;
+  assert.ok(st.absent.includes(goneId), "recorded as dropped");
+  assert.notStrictEqual(st.phase, "voting", `the round moved on, got ${st.phase}`);
+  assert.ok(["guess", "guess_vote", "reveal", "runoff"].includes(st.phase));
+  void hostId;
+});
+
+await test("dropping the fake artist voids the round rather than awarding it", async () => {
+  const { bs, code } = await startedMatch();
+  await drawAll(bs, code);
+  const host = bs[0];
+  let fakeId = null;
+  for (const b of bs) {
+    const me = (await b.get(`/api/games/${code}/state`)).body;
+    if (me.privateState.role === "fake") fakeId = me.you;
+  }
+  assert.ok(fakeId, "a fake artist was assigned");
+  const before = (await host.get(`/api/games/${code}/state`)).body.state.scores;
+
+  const drop = await host.post(`/api/games/${code}/action`, {
+    type: "drop_player", playerId: fakeId,
+  });
+  assert.strictEqual(drop.status, 200, JSON.stringify(drop.body));
+
+  const st = (await host.get(`/api/games/${code}/state`)).body.state;
+  assert.strictEqual(st.phase, "reveal", "the round ends immediately");
+  const r = st.results[st.results.length - 1];
+  assert.strictEqual(r.voided, true, "marked as abandoned");
+  assert.deepStrictEqual(r.winners, [], "nobody wins it");
+  assert.deepStrictEqual(st.scores, before, "no score changes hands");
+});
+
+await test("a dropped player is back in the next round", async () => {
+  const { bs, code } = await startedMatch();
+  await drawAll(bs, code);
+  const host = bs[0];
+  const goneId = (await bs[2].get(`/api/games/${code}/state`)).body.you;
+  await host.post(`/api/games/${code}/action`, { type: "drop_player", playerId: goneId });
+
+  // Push through to a reveal however the round resolved.
+  for (let i = 0; i < 8; i++) {
+    const st = (await host.get(`/api/games/${code}/state`)).body.state;
+    if (st.phase === "reveal") break;
+    for (const b of bs) {
+      const me = (await b.get(`/api/games/${code}/state`)).body;
+      const p = me.state.phase;
+      if (p === "voting" || p === "runoff") {
+        await b.post(`/api/games/${code}/vote`, {
+          targetId: me.state.seatOrder.find((id) => id !== me.you),
+        });
+      } else if (p === "guess" && me.state.accusedId === me.you) {
+        await b.post(`/api/games/${code}/guess`, { guess: "no" });
+      } else if (p === "guess_vote" && me.privateState.role !== "fake") {
+        await b.post(`/api/games/${code}/guess-vote`, { accept: false });
+      }
+    }
+  }
+  const before = (await host.get(`/api/games/${code}/state`)).body.state;
+  assert.strictEqual(before.phase, "reveal", `expected reveal, got ${before.phase}`);
+  assert.ok(before.absent.includes(goneId), "still dropped during the round");
+
+  await host.post(`/api/games/${code}/action`, { type: "next_round" });
+  const after = (await host.get(`/api/games/${code}/state`)).body.state;
+  assert.deepStrictEqual(after.absent, [], "a new round starts with nobody dropped");
+});
+
 console.log("\n--- event log and sync ---");
 
 await test("seq is gapless from 1", async () => {

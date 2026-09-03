@@ -465,4 +465,62 @@ const sh = shuf(seats6);
 assert.deepStrictEqual([...sh].sort(), [...seats6].sort(), "shuffle preserves the players");
 ok("seat shuffle preserves every player");
 
+
+// --- a player who walks out ------------------------------------------------
+const { activePlayers } = await import("../.test-build/game/reduce.js");
+const { drawingFinished } = await import("../.test-build/game/types.js");
+
+const dropped = reduce(
+  { ...base2, phase: "voting", absent: [] },
+  { seq: 300, type: "player_dropped", payload: { playerId: "c" } },
+);
+assert.deepStrictEqual(dropped.absent, ["c"]);
+assert.deepStrictEqual(activePlayers(dropped), ["a", "b"], "the round stops waiting on them");
+const twice = reduce(dropped, { seq: 301, type: "player_dropped", payload: { playerId: "c" } });
+assert.deepStrictEqual(twice.absent, ["c"], "dropping twice is idempotent");
+ok("a dropped player is excluded from what the round waits on");
+
+// Drawing skips them rather than stalling on their turn.
+const mid = { ...base2, phase: "drawing", turnIndex: 0, absent: ["a"] };
+assert.strictEqual(currentDrawer(mid), "b", "a dropped player's turn is skipped");
+const onlyC = { ...base2, phase: "drawing", turnIndex: 4, absent: ["a", "b"] };
+assert.strictEqual(currentDrawer(onlyC), "c");
+const noneLeft = { ...base2, phase: "drawing", turnIndex: 0, absent: ["a", "b", "c"] };
+assert.strictEqual(currentDrawer(noneLeft), null, "nobody left to draw");
+assert.strictEqual(drawingFinished(noneLeft), true);
+ok("drawing skips dropped players instead of stalling");
+
+// Dropping the last person still to draw ends the drawing phase.
+const lastToDraw = {
+  ...base2, phase: "drawing", seatOrder: ["a", "b", "c"], turnIndex: 5, absent: [],
+};
+assert.strictEqual(currentDrawer(lastToDraw), "c");
+const afterDropC = reduce(lastToDraw, {
+  seq: 310, type: "player_dropped", payload: { playerId: "c" },
+});
+assert.strictEqual(afterDropC.phase, "voting", "dropping the last drawer opens the vote");
+ok("dropping the last player still to draw finishes the drawing");
+
+// A voided round scores nobody.
+const voided = reduce({ ...base2, phase: "guess", scores: { a: 1, b: 0, c: 0 } }, {
+  seq: 320, type: "round_revealed",
+  payload: {
+    round: 1, fakeArtistId: "c", topic: "Kettle", category: "x", votes: {},
+    accusedId: null, caught: false, guess: null, guessAccepted: null,
+    winners: [], voided: true, scores: { a: 1, b: 0, c: 0 },
+  },
+});
+assert.deepStrictEqual(voided.scores, { a: 1, b: 0, c: 0 }, "a voided round changes no scores");
+assert.strictEqual(voided.results[0].voided, true);
+ok("a round abandoned by the fake artist scores nobody");
+
+// Host-only, and not in the lobby.
+const dropCtx = { state: { ...base2, phase: "voting" }, status: "active", playerId: A, hostId: A, playerCount: 3 };
+assert.strictEqual(validateAction({ type: "drop_player" }, dropCtx).ok, true);
+assert.strictEqual(validateAction({ type: "drop_player" }, { ...dropCtx, playerId: B }).ok, false, "host only");
+assert.strictEqual(
+  validateAction({ type: "drop_player" }, { ...dropCtx, state: { ...base2, phase: "lobby" } }).ok,
+  false, "nothing to drop from in the lobby");
+ok("dropping is host-only and needs a round in progress");
+
 console.log(`\nAll ${n} state-machine invariants hold.`);

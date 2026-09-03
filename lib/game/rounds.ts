@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import type { Tx } from "./mutate";
 import { initPrivateState } from "./private";
 import { pickPair } from "./words";
-import { settleRound, tally } from "./reduce";
+import { activePlayers, settleRound, tally } from "./reduce";
 import type { DraftEvent, GameState, PrivateState, RoundResult } from "./types";
 import { pickFakeArtist, shuffle } from "./selection";
 
@@ -168,6 +168,132 @@ export async function clearVotes(
            version = version + 1, updated_at = now()
      WHERE game_id = ${gameId}::uuid AND player_id <> ${exceptPlayerId}::uuid
   `);
+}
+
+/**
+ * A round abandoned because the fake artist left.
+ *
+ * Nobody scores. Awarding the round to either side would be rewarding a
+ * dropped connection, and the real artists never got to finish catching them.
+ */
+export function voidRound(
+  state: GameState,
+  opts: { fakeArtistId: string; topic: string },
+): DraftEvent {
+  return {
+    type: "round_revealed",
+    payload: {
+      round: state.round,
+      fakeArtistId: opts.fakeArtistId,
+      topic: opts.topic,
+      category: state.category ?? "",
+      votes: state.votes,
+      accusedId: state.accusedId,
+      caught: false,
+      guess: null,
+      guessAccepted: null,
+      winners: [],
+      voided: true,
+      scores: state.scores,
+    },
+  };
+}
+
+/**
+ * Can the round finish now?
+ *
+ * Called both when a vote lands and when the host drops someone, because both
+ * can be the thing that completes a phase. Without the second caller, a player
+ * who closed their tab left the round waiting on them forever.
+ *
+ * `override` carries the acting player's not-yet-written row: mutatePlayer
+ * writes player_state AFTER produce() runs, so their new vote is not in the
+ * table yet when this is called from the vote route.
+ */
+export async function resolveIfComplete(
+  tx: Tx,
+  gameId: string,
+  state: GameState,
+  override?: { playerId: string; vote: string },
+): Promise<DraftEvent[]> {
+  const rows = await readPrivateRows(tx, gameId);
+  const active = activePlayers(state);
+  const fake = rows.find((r) => r.data.role === "fake");
+  const topic = rows.find((r) => r.data.role !== "fake")?.data.topic ?? "";
+
+  if (state.phase === "voting" || state.phase === "runoff") {
+    const ballots: Record<string, string> = {};
+    for (const r of rows) {
+      if (!active.includes(r.playerId)) continue;
+      const v = override && r.playerId === override.playerId ? override.vote : r.data.vote;
+      if (v) ballots[r.playerId] = v;
+    }
+    // Nobody left to vote at all -- the round cannot be decided.
+    if (active.length === 0) {
+      return [voidRound(state, { fakeArtistId: fake?.playerId ?? "", topic })];
+    }
+    if (Object.keys(ballots).length < active.length) return [];
+
+    const resolved = resolveVote(state, ballots);
+    const events = [...resolved.events];
+    const goingToRunoff = resolved.tied.length > 1 && state.phase !== "runoff";
+    if (!goingToRunoff) {
+      events.push(
+        afterVote(
+          { ...state, votes: ballots, accusedId: resolved.accusedId },
+          { accusedId: resolved.accusedId, fakeArtistId: fake?.playerId ?? "", topic },
+        ),
+      );
+    }
+    return events;
+  }
+
+  if (state.phase === "guess_vote") {
+    const judges = rows.filter(
+      (r) => r.data.role !== "fake" && active.includes(r.playerId),
+    );
+    if (judges.length === 0 || judges.some((r) => r.data.guessVote === null)) return [];
+    const accepts = judges.filter((r) => r.data.guessVote === "accept").length;
+    return [
+      revealRound(state, {
+        fakeArtistId: fake?.playerId ?? "",
+        topic,
+        caught: true,
+        guess: state.guess,
+        guessAccepted: accepts * 2 >= judges.length,
+      }),
+    ];
+  }
+
+  return [];
+}
+
+/**
+ * What happens when the host drops a player mid-round.
+ *
+ * Dropping the fake artist voids the round -- the game cannot continue without
+ * the person everyone is trying to catch, and the host cannot avoid it because
+ * they do not know who it is. Otherwise the round simply stops waiting on them,
+ * which may be exactly what completes it.
+ */
+export async function afterDrop(
+  tx: Tx,
+  gameId: string,
+  state: GameState,
+  droppedId: string,
+): Promise<DraftEvent[]> {
+  const rows = await readPrivateRows(tx, gameId);
+  const fake = rows.find((r) => r.data.role === "fake");
+  const topic = rows.find((r) => r.data.role !== "fake")?.data.topic ?? "";
+
+  if (fake && fake.playerId === droppedId) {
+    return [voidRound(state, { fakeArtistId: droppedId, topic })];
+  }
+  // The accused cannot answer for themselves if they have gone.
+  if (state.phase === "guess" && state.accusedId === droppedId) {
+    return [voidRound(state, { fakeArtistId: fake?.playerId ?? "", topic })];
+  }
+  return resolveIfComplete(tx, gameId, state);
 }
 
 /** Clear per-round secrets so a stale vote cannot leak into the next round. */

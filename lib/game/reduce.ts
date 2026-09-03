@@ -1,6 +1,7 @@
 import {
   MIN_PLAYERS,
   currentDrawer,
+  drawingFinished,
   turnsInRound,
   type DraftEvent,
   type GameEvent,
@@ -43,6 +44,7 @@ export function reduce(state: GameState, event: GameEvent): GameState {
         turnIndex: 0,
         strokes: [],
         voted: [],
+        absent: [],
         votes: {},
         runoffCandidates: [],
         accusedId: null,
@@ -61,14 +63,14 @@ export function reduce(state: GameState, event: GameEvent): GameState {
       };
       // The last line opens the vote directly -- no separate discussion phase
       // and no Ready tally to shepherd everyone through.
-      return next.turnIndex >= turns ? openVote(next) : next;
+      return drawingFinished(next) ? openVote(next) : next;
     }
 
     case "turn_skipped": {
       const turns = turnsInRound(state.seatOrder.length);
       if (state.turnIndex >= turns) return state;
       const next = { ...state, turnIndex: state.turnIndex + 1 };
-      return next.turnIndex >= turns ? openVote(next) : next;
+      return drawingFinished(next) ? openVote(next) : next;
     }
 
     case "voting_started":
@@ -101,6 +103,13 @@ export function reduce(state: GameState, event: GameEvent): GameState {
 
     case "guess_opened":
       return { ...state, phase: "guess" };
+
+    case "player_dropped": {
+      if (state.absent.includes(event.payload.playerId)) return state;
+      const next = { ...state, absent: [...state.absent, event.payload.playerId] };
+      // If they were the only one still to draw, the round moves on.
+      return next.phase === "drawing" && drawingFinished(next) ? openVote(next) : next;
+    }
 
     case "guess_submitted":
       return { ...state, guess: event.payload.guess, phase: "guess_vote", guessVoted: [] };
@@ -190,6 +199,10 @@ export function settleRound(
   return { winners, scores };
 }
 
+/** Players the round still waits on: everyone the host has not dropped. */
+export const activePlayers = (state: GameState) =>
+  state.seatOrder.filter((id) => !state.absent.includes(id));
+
 /* --------------------------------------------------------------- validation */
 
 export interface ActionCtx {
@@ -229,6 +242,14 @@ export function validateAction(
       if (ctx.state.phase !== "reveal")
         return { ok: false, error: "The round is not finished" };
       return { ok: true };
+
+    case "drop_player": {
+      if (ctx.playerId !== ctx.hostId)
+        return { ok: false, error: "Only the host can drop a player" };
+      if (ctx.state.phase === "lobby" || ctx.state.phase === "complete")
+        return { ok: false, error: "No round is in progress" };
+      return { ok: true };
+    }
 
     case "end_match":
       // Only between rounds: stopping mid-round would strand a drawing, a

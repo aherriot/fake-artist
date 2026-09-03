@@ -193,9 +193,14 @@ function RevealPanel({ game, act, isHost }: { game: Game; act: Act; isHost: bool
       <p className="mt-2 font-display text-3xl">
         The subject was <span className="text-accent-400">{r.topic}</span>
       </p>
+      {r.voided && (
+        <p className="mt-2 text-sm text-warning">
+          Round abandoned — the fake artist left before it could finish. Nobody scores.
+        </p>
+      )}
       <p className="mt-2 text-sm text-label-300">
         <PlayerName id={r.fakeArtistId} players={sync.players} /> was the fake artist.{" "}
-        {r.caught ? (
+        {r.voided ? null : r.caught ? (
           r.guessAccepted ? (
             <>Caught — but guessed &ldquo;{r.guess}&rdquo; and got away with it.</>
           ) : (
@@ -209,7 +214,7 @@ function RevealPanel({ game, act, isHost }: { game: Game; act: Act; isHost: bool
           <>The room could not agree, so they walked.</>
         )}
       </p>
-      <p className="mt-2 text-sm">
+      <p className={clsx("mt-2 text-sm", r.voided && "hidden")}>
         {fakeWon ? (
           <span className="text-accent-400">The fake artist wins the round.</span>
         ) : (

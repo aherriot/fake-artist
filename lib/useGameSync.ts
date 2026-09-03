@@ -422,6 +422,19 @@ export function useGameSync(code: string) {
     [optimisticPost, sync.pending.votedFor],
   );
 
+  /** Host only: stop the round waiting on a player who has gone. */
+  const dropPlayer = useCallback(
+    async (playerId: string) => {
+      const res = await fetchJson(`/api/games/${code}/action`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type: "drop_player", playerId }),
+      });
+      return res.ok ? null : res.error;
+    },
+    [code],
+  );
+
   const forceResync = useCallback(() => {
     lastSeqRef.current = 0;
     readyRef.current = false;
@@ -443,6 +456,7 @@ export function useGameSync(code: string) {
     retryChat,
     discardChat,
     submitStroke,
+    dropPlayer,
     castVote,
   } as const;
 }

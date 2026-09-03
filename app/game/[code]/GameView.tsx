@@ -179,6 +179,7 @@ export default function GameView({ code }: { code: string }) {
             drawer={drawer}
             onHighlight={setHighlight}
             highlight={highlight}
+            isHost={isHost}
           />
         </div>
 

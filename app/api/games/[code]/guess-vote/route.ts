@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
+import { sql } from "drizzle-orm";
 import { apiHandler, readJson } from "@/lib/api";
 import { getPlayerId } from "@/lib/session";
 import { mutatePlayer } from "@/lib/game/private";
-import { readPrivateRows, revealRound } from "@/lib/game/rounds";
+import { readPrivateRows, resolveIfComplete } from "@/lib/game/rounds";
 import { broadcastAll } from "@/lib/pusher-server";
 import type { DraftEvent, PrivateState } from "@/lib/game/types";
 
@@ -40,28 +41,14 @@ async function postHandler(req: Request, { params }: { params: Promise<{ code: s
 
     const events: DraftEvent[] = [{ type: "guess_voted", payload: { playerId } }];
 
-    const rows = await readPrivateRows(tx, ctx.gameId);
-    const fake = rows.find((r) => r.data.role === "fake");
-    const judges = rows.filter((r) => r.data.role !== "fake");
-    const ballots = judges.map((r) =>
-      r.playerId === playerId ? (accept ? "accept" : "reject") : r.data.guessVote,
-    );
-
-    if (ballots.every((b) => b !== null)) {
-      const accepts = ballots.filter((b) => b === "accept").length;
-      // Ties favour the Fake Artist: rejecting takes a real majority.
-      const accepted = accepts * 2 >= ballots.length;
-      const topic = judges[0]?.data.topic ?? "";
-      events.push(
-        revealRound(ctx.state, {
-          fakeArtistId: fake?.playerId ?? "",
-          topic,
-          caught: true,
-          guess: ctx.state.guess,
-          guessAccepted: accepted,
-        }),
-      );
-    }
+    // Write our ballot first so the shared resolver sees it, then ask whether
+    // that was the last one outstanding.
+    await tx.execute(sql`
+      UPDATE player_state
+         SET data = data || ${JSON.stringify({ guessVote: accept ? "accept" : "reject" })}::jsonb
+       WHERE game_id = ${ctx.gameId}::uuid AND player_id = ${playerId}::uuid
+    `);
+    events.push(...(await resolveIfComplete(tx, ctx.gameId, ctx.state)));
 
     return {
       ok: true as const,

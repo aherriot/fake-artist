@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { apiHandler, readJson } from "@/lib/api";
 import { getPlayerId } from "@/lib/session";
 import { mutatePlayer } from "@/lib/game/private";
-import { afterVote, clearVotes, readPrivateRows, resolveVote } from "@/lib/game/rounds";
+import { clearVotes, resolveIfComplete } from "@/lib/game/rounds";
 import { broadcastAll } from "@/lib/pusher-server";
 import { validateVote } from "@/lib/game/reduce";
 import type { DraftEvent, PrivateState } from "@/lib/game/types";
@@ -40,40 +40,17 @@ async function postHandler(req: Request, { params }: { params: Promise<{ code: s
       ? []
       : [{ type: "player_voted", payload: { playerId } }];
 
-    // Who still owes a vote? In a runoff the tied players vote too, but a
-    // player may never vote for themselves, so they are excluded from their
-    // own ballot requirement only where the rules already exclude them.
-    const rows = await readPrivateRows(tx, ctx.gameId);
-    const ballots: Record<string, string> = {};
-    for (const r of rows) {
-      const v = r.playerId === playerId ? targetId : r.data.vote;
-      if (v) ballots[r.playerId] = v;
-    }
+    const resolved = await resolveIfComplete(tx, ctx.gameId, ctx.state, {
+      playerId,
+      vote: targetId,
+    });
+    events.push(...resolved);
 
-    if (Object.keys(ballots).length === ctx.state.seatOrder.length) {
-      const resolved = resolveVote(ctx.state, ballots);
-      events.push(...resolved.events);
-
-      // A tie opens a runoff and the round continues; otherwise the server --
-      // which alone knows who the Fake Artist is -- decides whether this leads
-      // to a guess or straight to the reveal.
-      const goingToRunoff = resolved.tied.length > 1 && ctx.state.phase !== "runoff";
-      if (goingToRunoff) {
-        // Everyone votes again, so everyone's ballot must be cleared -- this
-        // player's included, which is why it happens after the tally above.
-        await clearVotes(tx, ctx.gameId, playerId);
-        return { ok: true as const, data: { ...priv, vote: null }, events };
-      }
-      {
-        const fake = rows.find((r) => r.data.role === "fake");
-        const topic = rows.find((r) => r.data.role !== "fake")?.data.topic ?? "";
-        events.push(
-          afterVote(
-            { ...ctx.state, votes: ballots, accusedId: resolved.accusedId },
-            { accusedId: resolved.accusedId, fakeArtistId: fake?.playerId ?? "", topic },
-          ),
-        );
-      }
+    // A tie opens a runoff, and everyone votes again -- so every ballot is
+    // cleared, this player's included, which is why it happens after the tally.
+    if (resolved.some((e) => e.type === "voting_started")) {
+      await clearVotes(tx, ctx.gameId, playerId);
+      return { ok: true as const, data: { ...priv, vote: null }, events };
     }
 
     return { ok: true as const, data: { ...priv, vote: targetId }, events };

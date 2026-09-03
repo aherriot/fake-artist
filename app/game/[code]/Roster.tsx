@@ -21,16 +21,19 @@ export function Roster({
   drawer,
   onHighlight,
   highlight,
+  isHost,
 }: {
   game: ReturnType<typeof useGameSync>;
   drawer: string | null;
   onHighlight: (id: string | null) => void;
   highlight: string | null;
+  isHost: boolean;
 }) {
   const { sync } = game;
   const { state } = sync;
   const [pendingId, setPendingId] = useState<string | null>(null);
   const cast = useAction(async (id: string) => game.castVote(id));
+  const drop = useAction(async (id: string) => game.dropPlayer(id));
 
   const balloting = state.phase === "voting" || state.phase === "runoff";
   const voted = hasVoted(state, sync.pending, sync.you);
@@ -113,7 +116,29 @@ export function Roster({
                 {balloting && state.voted.includes(p.id) && (
                   <span className="label-caps text-success">Voted</span>
                 )}
-                {!online && !revealing && <span className="label-caps text-label-700">Away</span>}
+                {state.absent.includes(p.id) && (
+                  <span className="label-caps text-label-700">Dropped</span>
+                )}
+                {!online && !revealing && !state.absent.includes(p.id) && (
+                  <span className="label-caps text-label-700">Away</span>
+                )}
+                {/* Nothing waits on a dropped player, which is the only way to
+                    finish a round somebody has walked out of. */}
+                {isHost &&
+                  p.id !== sync.you &&
+                  !state.absent.includes(p.id) &&
+                  state.phase !== "lobby" &&
+                  state.phase !== "reveal" &&
+                  state.phase !== "complete" && (
+                    <button
+                      onClick={() => drop.run(p.id)}
+                      disabled={drop.pending}
+                      title={`Stop waiting for ${p.nickname} this round`}
+                      className="label-caps text-label-700 underline hover:text-danger"
+                    >
+                      Drop
+                    </button>
+                  )}
               </span>
             </>
           );
@@ -162,7 +187,14 @@ export function Roster({
         })}
       </ul>
 
-      {cast.error && <p role="alert" className="mt-3 text-sm text-danger">{cast.error}</p>}
+      {(cast.error || drop.error) && (
+        <p role="alert" className="mt-3 text-sm text-danger">{cast.error ?? drop.error}</p>
+      )}
+      {isHost && state.absent.length > 0 && (
+        <p className="mt-3 text-xs text-label-500">
+          Dropped players rejoin automatically next round.
+        </p>
+      )}
 
       {balloting && (
         <p className="mt-3 text-xs text-label-500">

@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { apiHandler, readJson } from "@/lib/api";
 import { getPlayerId } from "@/lib/session";
 import { mutate } from "@/lib/game/mutate";
-import { clearBallots, openRound, shuffle } from "@/lib/game/rounds";
+import { afterDrop, clearBallots, openRound, shuffle } from "@/lib/game/rounds";
 import { broadcastAll } from "@/lib/pusher-server";
 import { validateAction } from "@/lib/game/reduce";
 import type { DraftEvent, GameAction } from "@/lib/game/types";
@@ -59,6 +59,21 @@ async function postHandler(req: Request, { params }: { params: Promise<{ code: s
       return { ok: true as const, produced: { events, status: "active" as const } };
     }
 
+
+    if (action.type === "drop_player") {
+      const target = action.playerId;
+      if (!ctx.state.seatOrder.includes(target))
+        return { ok: false as const, error: "Not a player in this match" };
+      if (ctx.state.absent.includes(target))
+        return { ok: false as const, error: "Already dropped from this round" };
+
+      events.push({ type: "player_dropped", payload: { playerId: target } });
+      // Dropping someone can be the thing that completes the phase -- that is
+      // the whole point, since otherwise the round waits on them forever.
+      const after = { ...ctx.state, absent: [...ctx.state.absent, target] };
+      events.push(...(await afterDrop(tx, ctx.gameId, after, target)));
+      return { ok: true as const, produced: { events } };
+    }
 
     if (action.type === "end_match") {
       events.push({ type: "match_ended", payload: { at: new Date().toISOString() } });
