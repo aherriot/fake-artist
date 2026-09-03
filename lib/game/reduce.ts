@@ -1,5 +1,6 @@
 import {
   MIN_PLAYERS,
+  initialGameState,
   currentDrawer,
   drawingFinished,
   turnsInRound,
@@ -23,7 +24,13 @@ export function reduce(state: GameState, event: GameEvent): GameState {
   switch (event.type) {
     case "player_joined": {
       if (state.scores[event.payload.id] !== undefined) return state;
-      return { ...state, scores: { ...state.scores, [event.payload.id]: 0 } };
+      const next = { ...state, scores: { ...state.scores, [event.payload.id]: 0 } };
+      // Joining between rounds: seat order is fixed at kickoff, so a latecomer
+      // has to be appended or they would never get a turn.
+      if (state.seatOrder.length > 0 && !state.seatOrder.includes(event.payload.id)) {
+        next.seatOrder = [...state.seatOrder, event.payload.id];
+      }
+      return next;
     }
 
     case "match_started":
@@ -136,6 +143,14 @@ export function reduce(state: GameState, event: GameEvent): GameState {
 
     case "match_ended":
       return { ...state, phase: "complete", endedAt: event.payload.at };
+
+    case "match_reset": {
+      // Back to a lobby in the SAME room: same code, same URL, everyone stays
+      // put. Scores and history start over; the players do not.
+      const scores: Record<string, number> = {};
+      for (const id of Object.keys(state.scores)) scores[id] = 0;
+      return { ...initialGameState(), scores };
+    }
 
     case "chat":
       return state;
@@ -250,6 +265,13 @@ export function validateAction(
         return { ok: false, error: "No round is in progress" };
       return { ok: true };
     }
+
+    case "play_again":
+      if (ctx.playerId !== ctx.hostId)
+        return { ok: false, error: "Only the host can start a new match" };
+      if (ctx.state.phase !== "complete")
+        return { ok: false, error: "The match is not over yet" };
+      return { ok: true };
 
     case "end_match":
       // Only between rounds: stopping mid-round would strand a drawing, a

@@ -12,7 +12,7 @@ import type { Snapshot } from "@/lib/game/types";
 type Gate =
   | { kind: "checking" }
   | { kind: "member" }
-  | { kind: "stranger"; status: Snapshot["status"]; players: number }
+  | { kind: "stranger"; status: Snapshot["status"]; phase: string; players: number }
   | { kind: "missing" }
   | { kind: "error"; message: string; requestId?: string };
 
@@ -67,7 +67,12 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
     setGate(
       res.data.isPlayer
         ? { kind: "member" }
-        : { kind: "stranger", status: res.data.status, players: res.data.players.length },
+        : {
+            kind: "stranger",
+            status: res.data.status,
+            phase: res.data.state.phase,
+            players: res.data.players.length,
+          },
     );
   }, [upper]);
 
@@ -144,7 +149,8 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
   }
 
   if (gate.kind === "stranger") {
-    const closed = gate.status !== "lobby";
+    // A match in progress takes new players between rounds.
+    const closed = gate.status === "complete" || (gate.status !== "lobby" && gate.phase !== "reveal");
     return (
       <main className="mx-auto max-w-lg px-6 py-16">
         <Wordmark size="full" asLink={false} />
@@ -156,19 +162,32 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
           {closed ? (
             <>
               <p className="mt-5 text-sm text-danger">
-                This match is already {gate.status} and cannot take new players.
+                {gate.status === "complete"
+                  ? "This match has finished."
+                  : "A round is in progress."}
               </p>
               <p className="mt-2 text-sm text-label-500">
-                Ask the host for a new room, or start your own.
+                {gate.status === "complete"
+                  ? "Ask the host to start another, or start your own room."
+                  : "You can join as soon as this round ends — try again in a moment."}
               </p>
-              <Button variant="primary" href="/" className="mt-5" asChild>
-                Start a room
-              </Button>
+              <div className="mt-5 flex gap-2">
+                {gate.status !== "complete" && (
+                  <Button variant="secondary" onClick={retry}>
+                    Check again
+                  </Button>
+                )}
+                <Button variant="primary" href="/">
+                  Start a room
+                </Button>
+              </div>
             </>
           ) : (
             <>
               <p className="mt-4 text-sm text-label-300">
-                {gate.players} {gate.players === 1 ? "player is" : "players are"} waiting.
+                {gate.status === "lobby"
+                  ? `${gate.players} ${gate.players === 1 ? "player is" : "players are"} waiting.`
+                  : `A match is under way with ${gate.players} players — you'll join the next round.`}{" "}
                 Everyone draws one line of the same picture — except one of you, who has not
                 been told what it is.
               </p>

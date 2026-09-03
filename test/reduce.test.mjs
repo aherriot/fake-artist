@@ -523,4 +523,47 @@ assert.strictEqual(
   false, "nothing to drop from in the lobby");
 ok("dropping is host-only and needs a round in progress");
 
+
+// --- joining late, and playing again ---------------------------------------
+const mid2 = { ...base2, phase: "reveal", seatOrder: ["a", "b", "c"], scores: { a: 1, b: 0, c: 0 } };
+const late = reduce(mid2, {
+  seq: 400, type: "player_joined", payload: { id: "d", nickname: "Dev", seat: 3 },
+});
+assert.deepStrictEqual(late.seatOrder, ["a", "b", "c", "d"], "a latecomer is appended to seat order");
+assert.strictEqual(late.scores.d, 0, "and starts on zero");
+const joinedTwice = reduce(late, {
+  seq: 401, type: "player_joined", payload: { id: "d", nickname: "Dev", seat: 3 },
+});
+assert.deepStrictEqual(joinedTwice.seatOrder, ["a", "b", "c", "d"], "joining twice does not duplicate a seat");
+// In the lobby the seat order does not exist yet; match_started builds it.
+const inLobby = reduce({ ...initialGameState(), scores: {} }, {
+  seq: 402, type: "player_joined", payload: { id: "a", nickname: "A", seat: 0 },
+});
+assert.deepStrictEqual(inLobby.seatOrder, [], "no seat order until the match starts");
+ok("a latecomer is seated without disturbing the existing order");
+
+// Play again: same players, everything else back to zero.
+const finished = {
+  ...base2, phase: "complete", round: 3, totalRounds: 3,
+  scores: { a: 2, b: 1, c: 0 }, results: [{ round: 1 }, { round: 2 }],
+  fakeHistory: ["a", "b"], usedTopics: ["Kettle"], strokes: [{ playerId: "a", seat: 0, points: [] }],
+};
+const reset = reduce(finished, { seq: 410, type: "match_reset", payload: { at: "t" } });
+assert.strictEqual(reset.phase, "lobby", "back to a lobby");
+assert.deepStrictEqual(reset.scores, { a: 0, b: 0, c: 0 }, "same players, scores cleared");
+assert.deepStrictEqual(reset.results, [], "history cleared");
+assert.deepStrictEqual(reset.fakeHistory, [], "who faked before is forgotten");
+assert.deepStrictEqual(reset.usedTopics, [], "topics are available again");
+assert.deepStrictEqual(reset.strokes, [], "the canvas is wiped");
+assert.deepStrictEqual(reset.seatOrder, [], "seats are redrawn at kickoff");
+ok("play again keeps the players and resets everything else");
+
+const doneCtx = { state: { ...base2, phase: "complete" }, status: "complete", playerId: A, hostId: A, playerCount: 3 };
+assert.strictEqual(validateAction({ type: "play_again" }, doneCtx).ok, true);
+assert.strictEqual(validateAction({ type: "play_again" }, { ...doneCtx, playerId: B }).ok, false, "host only");
+assert.strictEqual(
+  validateAction({ type: "play_again" }, { ...doneCtx, state: { ...base2, phase: "voting" } }).ok,
+  false, "not while a match is running");
+ok("play again is host-only and needs a finished match");
+
 console.log(`\nAll ${n} state-machine invariants hold.`);

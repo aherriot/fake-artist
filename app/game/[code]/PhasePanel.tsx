@@ -33,7 +33,7 @@ export function PhasePanel({ game, act, isHost }: { game: Game; act: Act; isHost
     case "reveal":
       return <RevealPanel game={game} act={act} isHost={isHost} />;
     case "complete":
-      return <FinalScores game={game} />;
+      return <FinalScores game={game} act={act} isHost={isHost} />;
     default:
       return null;
   }
@@ -311,6 +311,9 @@ function RevealPanel({ game, act, isHost }: { game: Game; act: Act; isHost: bool
                 End match here
               </Button>
             ))}
+          <span className="w-full text-xs text-label-500">
+            Anyone with the code can join before the next round starts.
+          </span>
           {(next.error || end.error) && (
             <p role="alert" className="w-full text-sm text-danger">{next.error ?? end.error}</p>
           )}
@@ -329,8 +332,9 @@ function RevealPanel({ game, act, isHost }: { game: Game; act: Act; isHost: bool
  * the last round's attribution is history, and what people want is the
  * scoreboard and a recap of what happened.
  */
-function FinalScores({ game }: { game: Game }) {
+function FinalScores({ game, act, isHost }: { game: Game; act: Act; isHost: boolean }) {
   const { sync } = game;
+  const again = useAction(async () => act({ type: "play_again" }));
   const { state } = sync;
   const ranked = [...sync.players].sort(
     (a, b) => (state.scores[b.id] ?? 0) - (state.scores[a.id] ?? 0),
@@ -407,9 +411,27 @@ function FinalScores({ game }: { game: Game }) {
         </div>
       )}
 
-      <Button variant="secondary" href="/" className="mt-6">
-        Start another match
-      </Button>
+      {/* Same room, same code: nobody re-shares a link or re-joins. */}
+      <div className="mt-6 flex flex-wrap items-center gap-3">
+        {isHost ? (
+          <>
+            <Button variant="primary" disabled={again.pending} onClick={() => again.run()}>
+              {again.pending ? "Setting up…" : "Play again"}
+            </Button>
+            <span className="text-xs text-label-500">
+              Everyone stays in this room — scores reset, no new code to share.
+            </span>
+          </>
+        ) : (
+          <p className="text-sm text-label-500">
+            Stay here — if the host starts another match you are already in it.
+          </p>
+        )}
+      </div>
+      {again.error && <p role="alert" className="mt-2 text-sm text-danger">{again.error}</p>}
+      <p className="mt-4 text-xs text-label-500">
+        <a href="/" className="underline hover:text-label-300">Leave and start a new room</a>
+      </p>
     </Plaque>
   );
 }

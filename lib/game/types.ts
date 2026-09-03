@@ -209,6 +209,8 @@ export type GameEvent =
       payload: RoundResult & { scores: Record<string, number> };
     }
   | { seq: number; type: "match_ended"; payload: { at: string } }
+  /** Same room, same code, everyone still here -- a fresh match. */
+  | { seq: number; type: "match_reset"; payload: { at: string } }
   | {
       seq: number;
       type: "chat";
@@ -237,7 +239,8 @@ export type GameAction =
   | { type: "skip_turn" }
   | { type: "next_round" }
   | { type: "end_match" }
-  | { type: "drop_player"; playerId: string };
+  | { type: "drop_player"; playerId: string }
+  | { type: "play_again" };
 
 export interface Snapshot {
   gameId: string;

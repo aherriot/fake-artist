@@ -193,13 +193,6 @@ await test("a started game cannot be started twice", async () => {
   assert.strictEqual(again.status, 400);
 });
 
-await test("cannot join a game already under way", async () => {
-  const { a, code } = await lobby();
-  await a.post(`/api/games/${code}/action`, { type: "start_match" });
-  const late = browser();
-  const r = await late.post(`/api/games/${code}/join`, { nickname: "Late" });
-  assert.strictEqual(r.status, 400);
-});
 
 console.log("\n--- a full round ---");
 
@@ -224,6 +217,29 @@ async function drawAll(bs, code) {
     void who;
   }
   throw new Error("drawing never ended");
+}
+
+/** Play whatever phase we are in through to the reveal. */
+async function playToReveal(bs, code) {
+  for (let i = 0; i < 10; i++) {
+    const st = (await bs[0].get(`/api/games/${code}/state`)).body.state;
+    if (st.phase === "reveal" || st.phase === "complete") return st;
+    if (st.phase === "drawing") { await drawAll(bs, code); continue; }
+    for (const b of bs) {
+      const me = (await b.get(`/api/games/${code}/state`)).body;
+      const p = me.state.phase;
+      if (p === "voting" || p === "runoff") {
+        await b.post(`/api/games/${code}/vote`, {
+          targetId: me.state.seatOrder.find((id) => id !== me.you),
+        });
+      } else if (p === "guess" && me.state.accusedId === me.you) {
+        await b.post(`/api/games/${code}/guess`, { guess: "definitely not it" });
+      } else if (p === "guess_vote" && me.privateState?.role !== "fake") {
+        await b.post(`/api/games/${code}/guess-vote`, { accept: false });
+      }
+    }
+  }
+  throw new Error("never reached a reveal");
 }
 
 async function startedMatch() {
@@ -614,6 +630,70 @@ await test("a dropped player is back in the next round", async () => {
   await host.post(`/api/games/${code}/action`, { type: "next_round" });
   const after = (await host.get(`/api/games/${code}/state`)).body.state;
   assert.deepStrictEqual(after.absent, [], "a new round starts with nobody dropped");
+});
+
+await test("cannot join mid-round, but can join between rounds", async () => {
+  const { bs, code } = await startedMatch();
+  const host = bs[0];
+
+  // Mid-round: refused, with a reason that says when to come back.
+  const late = browser();
+  const during = await late.post(`/api/games/${code}/join`, { nickname: "Late" });
+  assert.strictEqual(during.status, 400, "cannot arrive mid-round");
+  assert.match(during.body.error, /round is in progress/i);
+
+  // Play the round out to a reveal.
+  await drawAll(bs, code);
+  const seats = (await host.get(`/api/games/${code}/state`)).body.state.seatOrder;
+  const byId = {};
+  for (const b of bs) byId[(await b.get(`/api/games/${code}/state`)).body.you] = b;
+  await playToReveal(bs, code);
+  const atReveal = (await host.get(`/api/games/${code}/state`)).body.state;
+  assert.strictEqual(atReveal.phase, "reveal", `expected reveal, got ${atReveal.phase}`);
+
+  // Between rounds: welcome.
+  const joined = await late.post(`/api/games/${code}/join`, { nickname: "Late" });
+  assert.strictEqual(joined.status, 200, JSON.stringify(joined.body));
+  const withLate = (await host.get(`/api/games/${code}/state`)).body;
+  assert.strictEqual(withLate.players.length, seats.length + 1, "the latecomer is in the room");
+  assert.strictEqual(
+    withLate.state.seatOrder.length, seats.length + 1, "and has a seat in the order");
+
+  // And they are dealt in for the next round.
+  await host.post(`/api/games/${code}/action`, { type: "next_round" });
+  const theirs = (await late.get(`/api/games/${code}/state`)).body;
+  assert.ok(theirs.privateState, "the latecomer gets a role in the next round");
+  assert.ok(["artist", "fake"].includes(theirs.privateState.role));
+});
+
+await test("after a match, the host can restart it in the same room", async () => {
+  const { bs, code } = await startedMatch();
+  const host = bs[0];
+  await drawAll(bs, code);
+  await playToReveal(bs, code);
+  await host.post(`/api/games/${code}/action`, { type: "end_match" });
+  const done = (await host.get(`/api/games/${code}/state`)).body;
+  assert.strictEqual(done.status, "complete");
+
+  const notHost = await bs[1].post(`/api/games/${code}/action`, { type: "play_again" });
+  assert.strictEqual(notHost.status, 400, "only the host may restart");
+
+  const again = await host.post(`/api/games/${code}/action`, { type: "play_again" });
+  assert.strictEqual(again.status, 200, JSON.stringify(again.body));
+
+  const fresh = (await host.get(`/api/games/${code}/state`)).body;
+  assert.strictEqual(fresh.code, code, "SAME room code — nothing to re-share");
+  assert.strictEqual(fresh.status, "lobby");
+  assert.strictEqual(fresh.state.phase, "lobby");
+  assert.strictEqual(fresh.players.length, 3, "everyone is still here");
+  assert.ok(Object.values(fresh.state.scores).every((v) => v === 0), "scores reset");
+  assert.deepStrictEqual(fresh.state.results, [], "history cleared");
+
+  // Everyone else sees the new lobby without doing anything.
+  const other = (await bs[1].get(`/api/games/${code}/state`)).body;
+  assert.strictEqual(other.isPlayer, true, "still a member, no re-join needed");
+  const restarted = await host.post(`/api/games/${code}/action`, { type: "start_match" });
+  assert.strictEqual(restarted.status, 200, "and it can start again");
 });
 
 console.log("\n--- event log and sync ---");

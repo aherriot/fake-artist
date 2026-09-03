@@ -141,8 +141,10 @@ individually correct votes.
 - **3 minimum**, **10 maximum**.
 - **2 allowed behind a dev flag only**, so the full flow can be exercised
   across two browsers.
-- **Open join at any round boundary.** Joiners append to the seat order and the
-  remaining rotation recomputes. No mid-round joins.
+- **Open join at any round boundary.** Between rounds is a safe moment to
+  arrive: no drawing to interrupt, no ballot half-cast, and the next round
+  deals everyone in from scratch. Latecomers are appended to the seat order.
+  Mid-round joins are refused, with a message saying when to try again.
 - A disconnected player keeps their seat and role and may rejoin — the signed
   cookie already makes this work.
 

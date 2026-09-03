@@ -35,8 +35,18 @@ async function postHandler(req: Request, { params }: { params: Promise<{ code: s
     `);
     if (existing.rows.length > 0) return { ok: false as const, error: "__already_joined__" };
 
-    if (ctx.status !== "lobby")
-      return { ok: false as const, error: "Game already started" };
+    // Between rounds is a safe moment to arrive: no drawing to interrupt, no
+    // ballot half-cast, and the next round deals everyone in from scratch.
+    const joinable = ctx.status === "lobby" || ctx.state.phase === "reveal";
+    if (!joinable) {
+      return {
+        ok: false as const,
+        error:
+          ctx.status === "complete"
+            ? "This match has finished"
+            : "A round is in progress — you can join when it ends",
+      };
+    }
 
     const seats = await tx.execute<{ next: number }>(sql`
       SELECT COALESCE(MAX(seat), -1) + 1 AS next

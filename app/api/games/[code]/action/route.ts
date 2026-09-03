@@ -75,6 +75,12 @@ async function postHandler(req: Request, { params }: { params: Promise<{ code: s
       return { ok: true as const, produced: { events } };
     }
 
+    if (action.type === "play_again") {
+      // Same room, same code: nobody has to share a new link or re-join.
+      events.push({ type: "match_reset", payload: { at: new Date().toISOString() } });
+      return { ok: true as const, produced: { events, status: "lobby" as const } };
+    }
+
     if (action.type === "end_match") {
       events.push({ type: "match_ended", payload: { at: new Date().toISOString() } });
       return { ok: true as const, produced: { events, status: "complete" as const } };
