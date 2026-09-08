@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import type { Tx } from "./mutate";
 import { initPrivateState } from "./private";
 import { pickPair } from "./words";
-import { activePlayers, settleRound, tally } from "./reduce";
+import { activePlayers, guessAccepted, settleRound, tally } from "./reduce";
 import type { DraftEvent, GameState, PrivateState, RoundResult } from "./types";
 import { pickFakeArtist, shuffle } from "./selection";
 
@@ -260,7 +260,7 @@ export async function resolveIfComplete(
         topic,
         caught: true,
         guess: state.guess,
-        guessAccepted: accepts * 2 >= judges.length,
+        guessAccepted: guessAccepted(accepts, judges.length),
       }),
     ];
   }

@@ -1,8 +1,10 @@
 // Pure state-machine tests: the half of the sync guarantee that runs
 // client-side, and the rules the server validates against.
 import assert from "node:assert";
-const { reduce, reduceAll, tally, settleRound, validateStroke, validateVote, validateAction } =
-  await import("../.test-build/game/reduce.js");
+const {
+  reduce, reduceAll, tally, settleRound, guessAccepted,
+  validateStroke, validateVote, validateAction,
+} = await import("../.test-build/game/reduce.js");
 const { initialGameState, normalizeGameState, currentDrawer, currentPass } =
   await import("../.test-build/game/types.js");
 
@@ -135,6 +137,31 @@ w = settleRound(base, { fakeArtistId: C, caught: true, guessAccepted: false });
 assert.deepStrictEqual(w.winners.sort(), [A, B], "caught and guess rejected: artists win");
 assert.deepStrictEqual(w.scores, { a: 1, b: 1, c: 0 });
 ok("all four win conditions score correctly");
+
+// --- judging the guess ------------------------------------------------------
+// A STRICT majority accepts, so an even split rejects and the real artists
+// keep the round. The room has already picked the fake artist out by this
+// point; a ballot they could not agree on must not hand that back. [ours]
+assert.strictEqual(guessAccepted(3, 4), true, "3 of 4 accepts");
+assert.strictEqual(guessAccepted(2, 4), false, "an even split is not a majority");
+assert.strictEqual(guessAccepted(1, 4), false, "a minority rejects");
+assert.strictEqual(guessAccepted(2, 3), true, "2 of 3 accepts");
+assert.strictEqual(guessAccepted(1, 2), false, "one of two judges is a tie, so it rejects");
+assert.strictEqual(guessAccepted(2, 2), true, "unanimous accepts");
+assert.strictEqual(guessAccepted(0, 0), false, "no judges left cannot accept");
+assert.strictEqual(guessAccepted(1, 1), true, "a lone judge decides it");
+ok("a tied guess vote rejects, so being caught still costs the fake artist");
+
+// The tie rules pull in opposite directions on purpose, and both favour
+// whoever did the work: a tied ACCUSATION means the room never agreed, so the
+// fake artist walks; a tied GUESS comes after the room already caught them.
+const tiedVote = tally({ a: B, b: A });
+assert.strictEqual(tiedVote.accusedId, null, "a tied accusation convicts nobody");
+const tiedGuess = settleRound(base, {
+  fakeArtistId: C, caught: true, guessAccepted: guessAccepted(1, 2),
+});
+assert.deepStrictEqual(tiedGuess.winners.sort(), [A, B], "a tied guess goes to the artists");
+ok("the two ties are settled in opposite directions, each favouring the room's work");
 
 // --- reveal is the only place the fake becomes public -----------------------
 const result = {
