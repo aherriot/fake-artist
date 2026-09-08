@@ -1,14 +1,82 @@
 # A Fake Artist Goes to New York
 
+### ▸ Play it: **[play-fake-artist.vercel.app](https://play-fake-artist.vercel.app)**
+
 An online multiplayer implementation of the drawing-and-deduction party game.
+Three to ten players, one shared room code, no accounts and no install.
 Next.js on Vercel, Neon Postgres, realtime over Pusher.
 
 **Status: playable.** A full match runs end to end in the browser — lobby,
-secret roles, drawing on a shared canvas, discussion, a secret ballot, runoffs,
-the guess and the room's judgement of it, and a scoreboard across rounds.
+secret roles, drawing on a shared canvas, a secret ballot, runoffs, the guess
+and the room's judgement of it, and a scoreboard across rounds.
 
 The sync layer is inherited from an earlier prototype (the git history predates
 this game) where it was built and load-tested. Only the rules layer changed.
+
+## The game
+
+Everyone is dealt the same subject to draw — a **topic**, say *Tomato* — except
+one player. The **Fake Artist** is told only the public **category**,
+*Something red*, and that they are the fake. Nobody else knows who they are.
+
+Then everybody draws. One continuous line each, in seat order, twice around the
+table. No erasing, no writing words, no taking it back once you commit.
+
+The real artists have to draw specifically enough to prove they know the topic,
+but not so specifically that the Fake Artist works it out from what is already
+on the paper. That dilemma is the entire game. The Fake Artist has to add a
+line that looks like it belongs to a drawing they cannot see the point of.
+
+When the last line lands the room votes, in secret, all at once. Accuse the
+wrong person — or fail to agree at all — and the Fake Artist walks. Catch them
+and they get one guess at the subject; guess right and they still win it.
+
+A point to each winner, one round per player, highest score takes the match.
+Full rules, including every choice the tabletop game leaves open to the table,
+are in [SPEC.md](SPEC.md).
+
+## Why it is technically interesting
+
+It is a hidden-information game played over a broadcast channel, on a platform
+with no server to keep anything in memory. Most of what follows comes from
+those two constraints.
+
+- **Secrets that cannot leak, by construction.** The usual approach is to
+  filter state per recipient and hope nobody forgets. Here the event log is
+  public *by definition* — the topic and the Fake Artist's identity live in
+  per-player rows that only their owner is ever sent, so there is no filtering
+  step to get wrong and no broadcast that could carry the answer.
+  [Public vs private state](#public-vs-private-state).
+- **A pure reducer that must not know too much.** Client and server run the
+  same reduction over the same ordered log, which is what stops them drifting —
+  but it also means the reducer is public, so it may never branch on a secret.
+  It got that wrong once, and the fix is the seam the rules now sit on:
+  [Where the rules go](#where-the-rules-go).
+- **No stateful server, and no lost events.** Serverless functions die between
+  requests, so there are no room objects and no socket server. Every mutation
+  is one transaction that writes state *and* appends to a gapless per-game
+  `seq`; clients hold a cursor and one rule — next, gap, or duplicate — covers
+  dropped messages, reordering, reconnects and reloads with no special cases.
+  [The core idea](#the-core-idea).
+- **Realtime you can switch off.** Pusher is a notification hint, never the
+  source of truth, so with no credentials at all the app falls back to polling
+  and every rule still holds. The integration suite runs that way on purpose,
+  which means the degraded path is tested on every single run.
+- **Simultaneous writers, no lock contention.** Ten players commit at the same
+  instant every round. Shared state takes an optimistic version guard with
+  jittered retry; private state goes to one row per player, so those writes
+  never touch the same tuple — measured at ~31x the throughput of serialising
+  them through `games.state`.
+- **Optimistic UI kept structurally apart from truth.** Predictions live in
+  their own object and are retired by the *arrival of their event*, never by
+  the request returning, so a gap-heal or a reload can never mistake a guess
+  for a fact. [Optimistic updates](#optimistic-updates).
+- **Every failure has a named outcome.** Stale bundle, bad code, dead network,
+  Pusher down, a legacy row — each one has a defined thing the player sees
+  rather than a blank screen. [When things break](#when-things-break).
+- **Tested in two halves.** The rules are a pure state machine with no database
+  in sight, so 54 invariants run in about a second; the plumbing gets 37
+  scenarios over real HTTP against a throwaway Postgres. [Tests](#tests).
 
 ## The core idea
 
@@ -262,7 +330,7 @@ guess was accepted — is never guessed at.
 ## Verifying a deployment
 
 ```bash
-npm run verify:deploy https://your-app.vercel.app
+npm run verify:deploy https://play-fake-artist.vercel.app
 ```
 
 Plays a real round against the deployed site and checks the things that fail
