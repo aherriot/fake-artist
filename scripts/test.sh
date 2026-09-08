@@ -8,7 +8,7 @@ rm -rf .test-build
 # are listed; without it tsc re-roots on the common ancestor and the paths move
 # every time a file from a new directory is added.
 npx tsc \
-  lib/game/reduce.ts lib/game/types.ts lib/game/words.ts \
+  lib/game/reduce.ts lib/game/types.ts lib/game/words.ts lib/game/broadcast.ts \
   lib/game/optimistic.ts lib/game/status.ts lib/game/selection.ts lib/ui/rememberedName.ts \
   --rootDir lib --outDir .test-build \
   --module esnext --target es2022 --moduleResolution bundler

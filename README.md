@@ -16,7 +16,8 @@ this game) where it was built and load-tested. Only the rules layer changed.
 
 Every mutation is one transaction that updates state *and* appends to a
 per-game event log with a gapless `seq`. Clients hold a cursor. Pusher pushes
-events; if a client sees a gap it refetches and heals itself.
+one message per mutation carrying that mutation's events; if a client sees a
+gap it refetches and heals itself.
 
 ```
 POST /api/games/CODE/...
@@ -31,10 +32,24 @@ POST /api/games/CODE/...
   └──────────────┬──────────────┘
                  ▼
           Pusher presence-game-CODE
+             [seq N+1, N+2]  ← ONE message, all this mutation's events
         ┌────────┼────────┐
         ▼        ▼        ▼
-    seq=N+1  seq=N+1   gap! ──► GET /events?since=N
+     apply    apply    gap! ──► GET /events?since=N
 ```
+
+One message per mutation, not per event, because Pusher bills a publish to N
+subscribers as N+1 messages — and a single mutation routinely produces several
+events (the last vote of a round appends `vote_resolved` and then
+`guess_opened` or `round_revealed`). The client applies an ordered array in the
+same loop it uses for a gap-heal, so this costs nothing in complexity.
+
+A batch over Pusher's 10KB limit is sent as `{ hint: seq }` instead. One stroke
+can exceed that on its own, so splitting would not help; and an over-size
+trigger is simply rejected, which would strand every client until the next
+sweep. The hint says *there is something new, seq N* and the client fetches it
+from the source of truth — which is all Pusher was ever doing here.
+`broadcastPayload` in `lib/game/broadcast.ts` owns that rule and is tested.
 
 One rule covers dropped messages, duplicates, reordering, reconnects and
 reloads, with no special cases:
@@ -281,10 +296,18 @@ cron removes it within 24 hours.
 
 ## Still to build
 
-Rules aside, two platform gaps the prototype never closed:
+Rules aside, the platform gaps the prototype never closed:
 
 - **Turn timers.** Nothing advances a game on its own; a player who walks away
   stalls it. This game needs them more than the prototype did.
-- **Pusher message budget.** Pusher counts 1 publish to N subscribers as N+1
-  messages. Drawing is the risk here: a stroke-per-event design could be
-  thousands of messages per game. Batch strokes.
+- **Host migration.** `host_id` is set once and never moves, and every override
+  — skip, next round, drop, end match, play again — is host-only. A host who
+  closes their tab freezes the room with no way out. Worse than the missing
+  timers, because there is no override at all.
+- **Rate limiting.** Nothing caps how fast a player can act. Every accepted
+  mutation appends to the log *and* fans out, so a script in a room can inflate
+  both the Pusher bill and the Neon one.
+
+Done since: **the Pusher message budget**. Broadcasts are one message per
+mutation, over-size batches degrade to a seq hint, and the redundancy poll runs
+at 60s rather than 15s now that every other route back into sync is covered.
