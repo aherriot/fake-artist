@@ -214,6 +214,23 @@ export function settleRound(
   return { winners, scores };
 }
 
+/**
+ * Does the room accept the fake artist's guess?
+ *
+ * A STRICT majority of the judges must accept, so an even split rejects. **[ours]**
+ *
+ * The tie has to fall one way and this is the side that matches how the round
+ * got here: the room has already picked the fake artist out, which is the hard
+ * half of the game. Handing the round straight back on a vote the room could
+ * not agree on would undo that on a coin flip. "Not convinced" is a rejection.
+ *
+ * The fake artist is never one of the judges -- they do not get to accept
+ * their own guess -- so `judges` is the count of active real artists.
+ */
+export function guessAccepted(accepts: number, judges: number): boolean {
+  return accepts * 2 > judges;
+}
+
 /** Players the round still waits on: everyone the host has not dropped. */
 export const activePlayers = (state: GameState) =>
   state.seatOrder.filter((id) => !state.absent.includes(id));

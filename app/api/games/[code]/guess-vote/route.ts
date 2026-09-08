@@ -15,8 +15,8 @@ export const dynamic = "force-dynamic";
  * POST /api/games/[code]/guess-vote -- do the real artists accept the guess?
  *
  * The Fake Artist is excluded: they win if it is accepted, so they do not get
- * to judge their own guess. Simple majority of the remaining players. A tie
- * counts as acceptance -- rejecting requires the room to actually agree.
+ * to judge their own guess. A strict majority of the remaining players is
+ * needed to accept, so an even split rejects -- see `guessAccepted`.
  *
  * The last ballot also reveals the round, which is the single place a topic
  * and a Fake Artist's identity enter the event log. By then both are public.

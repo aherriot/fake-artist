@@ -53,7 +53,7 @@ voting            simultaneous, revealed together
       ▼
 (guess)           if caught: Fake Artist types a free-text guess
       ▼
-(guess vote)      other players vote, simple majority, accept or reject  [ours]
+(guess vote)      other players vote, strict majority accepts             [ours]
       ▼
 reveal            roles, pair, and outcome shown; scores updated
 ```
@@ -102,6 +102,20 @@ player, and a silent skip leaks information either way.
 | Vote ties, then ties again in runoff | Fake Artist **[ours]** |
 | Caught, guess accepted | Fake Artist |
 | Caught, guess rejected | All real artists |
+| Caught, guess vote tied | All real artists **[ours]** |
+
+### Judging the guess **[ours]**
+
+The Fake Artist is excluded from this ballot — they win if it is accepted, so
+they do not judge their own guess. Everyone else votes, and it takes a **strict
+majority to accept**: with four judges, two accepts is not enough.
+
+Both ties in this game are settled in favour of whoever did the work to get
+there. A tied *accusation* favours the Fake Artist, because the room failed to
+agree on anyone. A tied *guess* favours the real artists, because by then they
+have already picked the Fake Artist out — that is the hard half of the game,
+and handing the round straight back on a ballot the room could not agree on
+would undo it on a coin flip. "Not convinced" is a rejection.
 
 ## Scoring **[ours]**
 
