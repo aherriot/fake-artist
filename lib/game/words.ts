@@ -20,6 +20,13 @@
  *
  * Written in the Oink style: "Something red", not "Fruit". Every topic must be
  * drawable in a handful of single lines by people who cannot draw.
+ *
+ * SIZE is the other half of the job, because `pickPair` prefers a category the
+ * match has not used. A match is one round per player, so ten categories is a
+ * full ten-player match -- at seventeen, a second match in the same room was
+ * visibly picking over the leftovers, and any group that plays a few evenings
+ * would have seen everything. Thirty is three full matches before a category
+ * comes round twice, and the topic pool outlasts a room that never resets.
  */
 
 export interface WordPair {
@@ -137,6 +144,84 @@ export const CATEGORIES: Category[] = [
     topics: ["Spider", "Piano", "Giraffe", "Tripod", "Octopus", "Stepladder",
       "Crab", "Deckchair", "Flamingo", "Ostrich", "Easel", "Bar stool",
       "Card table", "Millipede", "Grasshopper", "Trestle", "Wading bird", "Camera tripod"],
+  },
+  {
+    category: "Something in a bathroom",
+    topics: ["Bathtub", "Toothbrush", "Rubber duck", "Shower head", "Toilet roll", "Bar of soap",
+      "Hairdryer", "Bath mat", "Razor", "Sponge", "Toothpaste tube", "Hand mirror",
+      "Weighing scales", "Towel rail", "Plunger", "Cotton bud", "Shower curtain", "Medicine cabinet"],
+  },
+  {
+    category: "Something on a farm",
+    topics: ["Tractor", "Scarecrow", "Windmill", "Barn", "Pitchfork", "Hay bale",
+      "Sheepdog", "Milk churn", "Wheelbarrow", "Cockerel", "Water trough", "Beehive",
+      "Egg basket", "Combine harvester", "Duck pond", "Sheep", "Five-bar gate", "Plough"],
+  },
+  {
+    category: "Something with a tail",
+    topics: ["Kite", "Comet", "Squirrel", "Kangaroo", "Peacock", "Mouse",
+      "Aeroplane", "Donkey", "Whale", "Scorpion", "Tadpole", "Rocking horse",
+      "Seahorse", "Fox", "Crocodile", "Lizard", "Mermaid", "Shooting star"],
+  },
+  {
+    category: "Something round",
+    topics: ["Ferris wheel", "Pizza", "Doughnut", "Football", "Clock face", "Coin",
+      "Porthole", "Manhole cover", "Dartboard", "Balloon", "Globe", "Frisbee",
+      "Compass", "Wagon wheel", "Life ring", "Beach ball", "Vinyl record", "Magnifying glass"],
+  },
+  {
+    category: "Something that holds water",
+    topics: ["Watering can", "Bathtub", "Bucket", "Teapot", "Garden pond", "Fish tank",
+      "Kettle", "Thermos flask", "Wine glass", "Water bottle", "Fountain", "Rain barrel",
+      "Puddle", "Vase", "Swimming pool", "Hosepipe", "Ice cube tray", "Wishing well"],
+  },
+  {
+    category: "Something in a toolbox",
+    topics: ["Hammer", "Spirit level", "Screwdriver", "Tape measure", "Pliers", "Spanner",
+      "Handsaw", "Paintbrush", "Chisel", "Torch", "Power drill", "Nail",
+      "Sandpaper", "Allen key", "Clamp", "Oil can", "Wire cutters", "Set square"],
+  },
+  {
+    category: "Something in a school",
+    topics: ["Blackboard", "Globe", "Ruler", "Pencil sharpener", "School bell", "Satchel",
+      "Easel", "Microscope", "Abacus", "Whistle", "Lunchbox", "Stick of chalk",
+      "Protractor", "Climbing rope", "Bunsen burner", "Register", "Desk", "Skipping rope"],
+  },
+  {
+    category: "Something that lights up",
+    topics: ["Lighthouse", "Torch", "Candle", "Traffic light", "Street lamp", "Chandelier",
+      "Firework", "Jack-o'-lantern", "Neon sign", "Campfire", "Lava lamp", "Firefly",
+      "Match", "Miner's helmet", "Fairy lights", "Disco ball", "Oil lamp", "Lightning bolt"],
+  },
+  {
+    category: "Something in a forest",
+    topics: ["Owl", "Mushroom", "Log cabin", "Axe", "Squirrel", "Campfire",
+      "Tent", "Deer", "Tree stump", "Woodpecker", "Fox", "Pine cone",
+      "Hammock", "Birdhouse", "Toadstool", "Bear", "Trail sign", "Rope swing"],
+  },
+  {
+    category: "Something in a hospital",
+    topics: ["Stethoscope", "Wheelchair", "Crutch", "Syringe", "Ambulance", "Bandage",
+      "Thermometer", "Plaster cast", "Hospital bed", "Skeleton", "X-ray", "Pill bottle",
+      "First aid kit", "Eye chart", "Drip stand", "Face mask", "Scalpel", "Hot water bottle"],
+  },
+  {
+    category: "Something with buttons",
+    topics: ["Accordion", "Lift panel", "Calculator", "Remote control", "Waistcoat", "Typewriter",
+      "Cash register", "Microwave", "Telephone", "Games controller", "Doorbell", "Jukebox",
+      "Vending machine", "Cardigan", "Camera", "Trumpet", "Alarm clock", "Duffle coat"],
+  },
+  {
+    category: "Something at a party",
+    topics: ["Balloon", "Birthday cake", "Party hat", "Pinata", "Disco ball", "Streamers",
+      "Bunting", "Jelly", "Candle", "Wrapped present", "Confetti", "Party popper",
+      "Punch bowl", "Karaoke machine", "Paper plate", "Sparkler", "Photo booth", "Cocktail glass"],
+  },
+  {
+    category: "Something that grows",
+    topics: ["Sunflower", "Beanstalk", "Mushroom", "Tadpole", "Snowball", "Beard",
+      "Oak tree", "Cactus", "Pineapple", "Grapevine", "Sapling", "Coral",
+      "Icicle", "Crystal", "Caterpillar", "Ivy", "Ear of wheat", "Pumpkin"],
   },
 ];
 
