@@ -268,6 +268,39 @@ assert.strictEqual(cleared.chat.length, 1, "chat spans rounds");
 ok("a new round clears per-round predictions but keeps chat");
 
 
+// --- what goes on the wire --------------------------------------------------
+const { broadcastPayload, MAX_PAYLOAD_BYTES } =
+  await import("../.test-build/game/broadcast.js");
+
+// One mutation, one message: Pusher bills per subscriber, so a round-resolving
+// vote must not cost the room three fan-outs where one will do.
+const pair = [
+  { seq: 9, type: "vote_resolved", payload: { votes: { a: C }, accusedId: C, tied: [] } },
+  { seq: 10, type: "guess_opened", payload: {} },
+];
+assert.deepStrictEqual(broadcastPayload(pair), pair, "a small batch travels whole");
+
+// A stroke can be far too big to publish. Splitting cannot help -- one event
+// already exceeds the limit -- so the client gets a cursor, not the drawing.
+const fat = [{
+  seq: 11, type: "stroke_drawn",
+  payload: { playerId: A, seat: 0, points: Array.from({ length: 2000 }, (_, i) => [i / 2000, 0.123456789]) },
+}];
+assert.ok(JSON.stringify(fat).length > MAX_PAYLOAD_BYTES, "the fixture must actually be oversized");
+assert.deepStrictEqual(broadcastPayload(fat), { hint: 11 }, "too big to send becomes a hint");
+
+// The hint has to name the LAST seq, or a client that heals to it is still
+// behind and sits there until the next broadcast or the slow poll.
+const mixed = [{ seq: 12, type: "chat", payload: { text: "x" } }, fat[0], { seq: 14, type: "guess_opened", payload: {} }];
+assert.deepStrictEqual(broadcastPayload(mixed), { hint: 14 }, "the hint points at the end of the batch");
+
+// Measured in bytes, not characters: a nickname of emoji is several bytes each,
+// and Pusher counts what it receives.
+const wide = [{ seq: 15, type: "chat", payload: { text: "🎨".repeat(MAX_PAYLOAD_BYTES / 3) } }];
+assert.ok("hint" in broadcastPayload(wide), "multi-byte text counts against the limit");
+ok("a broadcast is one message, and degrades to a seq hint when it will not fit");
+
+
 // --- the word list ----------------------------------------------------------
 const { CATEGORIES, WORD_PAIRS, pickPair, MIN_TOPICS_PER_CATEGORY } =
   await import("../.test-build/game/words.js");

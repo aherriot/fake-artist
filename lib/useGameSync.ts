@@ -93,6 +93,8 @@ export function useGameSync(code: string) {
   const readyRef = useRef(false);
   const bufferRef = useRef<GameEvent[]>([]);
   const healingRef = useRef(false);
+  /** Highest seq a size-capped broadcast pointed at before we were ready. */
+  const hintRef = useRef(0);
 
   const applyEvent = useCallback((ev: GameEvent) => {
     setSync((prev) => {
@@ -158,31 +160,68 @@ export function useGameSync(code: string) {
 
   /** The single funnel every incoming event passes through. */
   const ingest = useCallback(
-    (ev: GameEvent) => {
-      // Snapshot has not landed yet -- hold it; step 3 will sort it out.
+    (batch: GameEvent[]) => {
+      // Snapshot has not landed yet -- hold them; step 3 will sort it out.
       if (!readyRef.current) {
-        bufferRef.current.push(ev);
+        bufferRef.current.push(...batch);
         return;
       }
-      if (ev.seq === lastSeqRef.current + 1) {
-        applyEvent(ev);
-        // Private state never travels in the log, so it cannot be derived by
-        // replay -- re-read it whenever an event may have changed it. A new
-        // round deals a new role and topic; a reveal clears the ballots.
-        if (
-          ev.type === "round_started" ||
-          ev.type === "round_revealed" ||
-          ev.type === "match_started"
-        ) {
-          void refetchPrivate();
+      for (const ev of [...batch].sort((a, b) => a.seq - b.seq)) {
+        if (ev.seq === lastSeqRef.current + 1) {
+          applyEvent(ev);
+          // Private state never travels in the log, so it cannot be derived by
+          // replay -- re-read it whenever an event may have changed it. A new
+          // round deals a new role and topic; a reveal clears the ballots.
+          if (
+            ev.type === "round_started" ||
+            ev.type === "round_revealed" ||
+            ev.type === "match_started"
+          ) {
+            void refetchPrivate();
+          }
+        } else if (ev.seq > lastSeqRef.current + 1) {
+          // Gap: we missed something. Refetch rather than guess, and stop --
+          // heal covers the rest of this batch too, in order.
+          void heal(lastSeqRef.current);
+          return;
         }
-      } else if (ev.seq > lastSeqRef.current + 1) {
-        // Gap: we missed something. Refetch rather than guess.
-        void heal(lastSeqRef.current);
+        // ev.seq <= lastSeq -> duplicate or replay, ignore.
       }
-      // ev.seq <= lastSeq -> duplicate or replay, ignore.
     },
     [applyEvent, heal, refetchPrivate],
+  );
+
+  /**
+   * Normalise what actually arrives on the channel.
+   *
+   * Three shapes are possible, and all three reduce to "apply these, or go
+   * and find out what you missed":
+   *
+   *   an array          one mutation's events, the normal case
+   *   `{ hint: seq }`   the batch was too big for Pusher's 10KB limit, so the
+   *                     server sent only the seq to catch up to
+   *   a bare event      a tab still running a build from before batching
+   *
+   * The last one is why this tolerates the old shape rather than assuming the
+   * new one: a client is only guaranteed to be as new as the last page load.
+   */
+  const ingestMessage = useCallback(
+    (raw: GameEvent | GameEvent[] | { hint: number }) => {
+      if (Array.isArray(raw)) return ingest(raw);
+      if (raw && typeof raw === "object" && "hint" in raw) {
+        // Nothing to apply, only a reason to look. Before the snapshot lands
+        // there is no cursor to compare against, so record it and let
+        // loadSnapshot decide once there is one.
+        if (!readyRef.current) {
+          hintRef.current = Math.max(hintRef.current, raw.hint);
+        } else if (raw.hint > lastSeqRef.current) {
+          void heal(lastSeqRef.current);
+        }
+        return;
+      }
+      ingest([raw as GameEvent]);
+    },
+    [ingest, heal],
   );
 
   const loadSnapshot = useCallback(async () => {
@@ -221,10 +260,16 @@ export function useGameSync(code: string) {
     }
 
     // Step 3: drain anything that arrived while we were fetching.
-    const buffered = bufferRef.current.sort((a, b) => a.seq - b.seq);
+    const buffered = bufferRef.current;
     bufferRef.current = [];
-    for (const ev of buffered) ingest(ev);
-  }, [code, ingest]);
+    ingest(buffered);
+
+    // A size-capped broadcast during the fetch carried no events to drain,
+    // only a seq. Now that there is a cursor to compare it against, act on it.
+    const hint = hintRef.current;
+    hintRef.current = 0;
+    if (hint > lastSeqRef.current) void heal(lastSeqRef.current);
+  }, [code, ingest, heal]);
 
   useEffect(() => {
     const pusher = getPusher();
@@ -236,7 +281,7 @@ export function useGameSync(code: string) {
 
     if (pusher) {
       channel = pusher.subscribe(channelFor(code)) as PresenceChannel;
-      channel.bind(EVENT_NAME, ingest);
+      channel.bind(EVENT_NAME, ingestMessage);
 
       const syncPresence = () => {
         const ids = new Set<string>();
@@ -277,11 +322,18 @@ export function useGameSync(code: string) {
      * polling is not a separate code path -- it is the same repair the gap
      * detector already runs. Fast when realtime is unavailable, slow as a
      * belt-and-braces sweep when it is working.
+     *
+     * The slow sweep is deliberately rare. Every other route back into sync is
+     * already covered -- a gap heals on the next event, a reconnect heals, a
+     * backgrounded tab heals on becoming visible, and an over-sized broadcast
+     * sends a hint -- so this only catches a broadcast that vanished with
+     * nothing following it. At 15s it was ten players x 4 requests a minute
+     * against Neon, for the whole length of a match, to cover that.
      */
     const poll = setInterval(() => {
       if (!readyRef.current) return;
       void heal(lastSeqRef.current);
-    }, pusher ? 15_000 : 2_000);
+    }, pusher ? 60_000 : 2_000);
 
     // A tab restored from background may have missed the reconnect entirely.
     const onVisible = () => {
@@ -302,8 +354,9 @@ export function useGameSync(code: string) {
       readyRef.current = false;
       lastSeqRef.current = 0;
       bufferRef.current = [];
+      hintRef.current = 0;
     };
-  }, [code, ingest, heal, loadSnapshot]);
+  }, [code, ingestMessage, heal, loadSnapshot]);
 
   /* ------------------------------------------------------------ mutations */
 
@@ -439,6 +492,7 @@ export function useGameSync(code: string) {
     lastSeqRef.current = 0;
     readyRef.current = false;
     bufferRef.current = [];
+    hintRef.current = 0;
     // A manual resync means the user distrusts what they are seeing; keep only
     // failed chat, which is theirs and would otherwise be lost.
     setSync((p) => ({
