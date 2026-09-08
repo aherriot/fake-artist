@@ -350,16 +350,27 @@ assert.ok([...catsOf.values()].filter((n) => n > 1).length >= 10,
   "too few topics appear under more than one category; the reverse mapping is learnable");
 ok("topics recur across categories, so the mapping is many-to-many");
 
+// Size is a property of the list, not an accident of how much got written.
+// `pickPair` prefers an unused category, so a match of one round per player
+// needs MAX_PLAYERS of them before it starts repeating -- and a room that
+// plays several matches without resetting needs a good many more.
+assert.ok(CATEGORIES.length >= 30,
+  `only ${CATEGORIES.length} categories; a group would see the whole list in a few evenings`);
+assert.ok(WORD_PAIRS.length >= 500, `only ${WORD_PAIRS.length} pairs in the list`);
+assert.strictEqual(new Set(CATEGORIES.map((c) => c.category)).size, CATEGORIES.length,
+  "two categories share a name, so one of them can never be picked while the other is unused");
+ok(`the list carries ${CATEGORIES.length} categories and ${WORD_PAIRS.length} pairs`);
+
 // Never repeat a topic while unused ones remain.
 const seen = [];
 const cats = [];
-for (let i = 0; i < 40; i++) {
+for (let i = 0; i < 120; i++) {
   const p = pickPair(seen, cats);
   assert.ok(!seen.includes(p.topic), `pickPair repeated "${p.topic}" after ${i} rounds`);
   seen.push(p.topic);
   cats.push(p.category);
 }
-ok("40 consecutive rounds never repeat a topic");
+ok("120 consecutive rounds never repeat a topic");
 
 // Prefers a fresh category, for variety within a match.
 const used = CATEGORIES.slice(0, CATEGORIES.length - 1).map((c) => c.category);
