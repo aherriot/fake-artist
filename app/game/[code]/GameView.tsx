@@ -157,6 +157,7 @@ export default function GameView({ code }: { code: string }) {
               yourSeat={yourSeat}
               onSubmit={g.submitStroke}
               highlightPlayerId={highlight}
+              onHighlight={setHighlight}
             />
           )}
 

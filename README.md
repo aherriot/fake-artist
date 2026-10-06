@@ -206,7 +206,7 @@ Two things in the palette are deliberate departures worth knowing:
   Every pen clears 3.2:1 against the paper.
 - **Colour never carries attribution alone.** Past about eight categories no
   palette stays reliably distinguishable for anyone, and this game supports
-  ten players — so every stroke also carries its seat number.
+  ten players — so every stroke can also show its seat number.
 - **There are two pen ramps, and using the wrong one is a real bug.**
   `penVar()` is ink on white paper, for strokes and swatches. `penTextVar()` is
   the lightened counterpart for names on the dark UI: six of the ten pens fail
@@ -295,10 +295,14 @@ so a shaky trackpad costs a redraw rather than your turn. Pointer capture keeps
 the line following you past the edge of the sheet, and points closer than
 0.004 apart are dropped.
 
-Every stroke carries its **seat number** at its start point, and hovering a
-name in the roster dims every line that is not theirs. Colour cannot separate
-ten players, and "whose line is that?" is the question the game turns on, so
-this is the mechanism rather than a convenience.
+Every stroke can show its **seat number** at its start point. The numbers are
+hidden by default so the drawing reads as one picture. Hovering or tapping a
+name in the roster, or a line on the sheet, dims every other player's lines and
+numbers that player's. A **Show artists** toggle under the sheet numbers every
+line at once, which is the only way to see them all on a touch screen. Colour
+cannot separate ten players, and "whose line is that?" is the question the game
+turns on, so this is the mechanism rather than a convenience. Lines do not
+respond to hover while it is your turn, so the highlight never fights the pen.
 
 ## Optimistic updates
 

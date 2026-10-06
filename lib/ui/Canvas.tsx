@@ -31,7 +31,7 @@ export function Canvas({
   yourSeat,
   onSubmit,
   highlightPlayerId,
-  showSeatTags = true,
+  onHighlight,
   pending,
 }: {
   strokes: Stroke[];
@@ -39,9 +39,10 @@ export function Canvas({
   yourSeat: number;
   /** Resolves to an error string, or null when the line was accepted. */
   onSubmit: (points: [number, number][]) => Promise<string | null | void>;
-  /** Dim everything except this player's lines. */
+  /** Dim everything except this player's lines, and label them. */
   highlightPlayerId?: string | null;
-  showSeatTags?: boolean;
+  /** Hovering or tapping a line names its artist, the same as the roster. */
+  onHighlight?: (playerId: string | null) => void;
   /** Your own strokes awaiting confirmation, drawn the same as the rest. */
   pending?: Stroke[];
 }) {
@@ -50,6 +51,7 @@ export function Canvas({
   const [drawing, setDrawing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
 
   const pointFrom = useCallback((e: React.PointerEvent): [number, number] | null => {
     const el = svgRef.current;
@@ -106,6 +108,9 @@ export function Canvas({
 
   const all = [...strokes, ...(pending ?? [])];
   const hasDraft = draft.length >= 2;
+  // While it is your turn the pen owns the pointer; hovering lines would
+  // flicker highlights under every stroke you draw.
+  const canInspect = !canDraw && !!onHighlight;
 
   return (
     <div>
@@ -161,32 +166,68 @@ export function Canvas({
             />
           )}
 
+          {/* Invisible, fat copies of each line so it is easy to hover or
+              tap. Drawn after the real lines so they sit on top. */}
+          {canInspect &&
+            all.map((s, i) => (
+              <path
+                key={`h${i}`}
+                d={toPath(s.points)}
+                stroke="transparent"
+                strokeWidth={16}
+                vectorEffect="non-scaling-stroke"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+                pointerEvents="stroke"
+                className="cursor-pointer"
+                onPointerEnter={(e) => e.pointerType === "mouse" && onHighlight?.(s.playerId)}
+                onPointerLeave={(e) => e.pointerType === "mouse" && onHighlight?.(null)}
+                onClick={() =>
+                  onHighlight?.(highlightPlayerId === s.playerId ? null : s.playerId)
+                }
+              />
+            ))}
+
           {/* Seat numbers at each line's start. Colour cannot carry
               attribution alone past about eight players, so the number is the
-              fact and the colour is the hint. */}
-          {showSeatTags &&
-            all.map((s, i) => {
-              if (s.points.length === 0) return null;
-              const [x, y] = s.points[0];
-              const dimmed = highlightPlayerId != null && s.playerId !== highlightPlayerId;
-              return (
-                <g key={`t${i}`} opacity={dimmed ? 0.15 : 0.85}>
-                  <circle cx={x} cy={y} r={0.022} fill={penVar(s.seat + 1)} />
-                  <text
-                    x={x}
-                    y={y}
-                    textAnchor="middle"
-                    dominantBaseline="central"
-                    fill="#faf7f1"
-                    style={{ fontSize: 0.028, fontFamily: "var(--font-mono)" }}
-                  >
-                    {s.seat + 1}
-                  </text>
-                </g>
-              );
-            })}
+              fact and the colour is the hint. Hidden unless asked for, so the
+              drawing reads as one picture. */}
+          {all.map((s, i) => {
+            if (s.points.length === 0) return null;
+            if (!showAll && s.playerId !== highlightPlayerId) return null;
+            const [x, y] = s.points[0];
+            const dimmed = highlightPlayerId != null && s.playerId !== highlightPlayerId;
+            return (
+              <g key={`t${i}`} opacity={dimmed ? 0.15 : 0.85} pointerEvents="none">
+                <circle cx={x} cy={y} r={0.022} fill={penVar(s.seat + 1)} />
+                <text
+                  x={x}
+                  y={y}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  fill="#faf7f1"
+                  style={{ fontSize: 0.028, fontFamily: "var(--font-mono)" }}
+                >
+                  {s.seat + 1}
+                </text>
+              </g>
+            );
+          })}
         </svg>
       </div>
+
+      {all.length > 0 && (
+        <label className="mx-auto mt-2 flex w-fit cursor-pointer items-center gap-2 text-xs text-label-500 hover:text-label-300">
+          <input
+            type="checkbox"
+            checked={showAll}
+            onChange={(e) => setShowAll(e.target.checked)}
+            className="accent-accent-500"
+          />
+          Show artists
+        </label>
+      )}
 
       {canDraw && (
         <div className="mt-3 flex items-center gap-3">
