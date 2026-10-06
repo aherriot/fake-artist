@@ -104,7 +104,7 @@ export default function Home() {
   }
 
   return (
-    <main className="mx-auto max-w-lg px-6 py-16 sm:py-24">
+    <main className="mx-auto max-w-xl px-6 py-16 sm:py-24">
       <header className="mb-10">
         <Wordmark size="full" asLink={false} />
         <p className="mt-5 max-w-md text-label-300">
@@ -128,7 +128,7 @@ export default function Home() {
             hint={
               remembered
                 ? "Remembered on this device. Change it if you like."
-                : "Everyone in the room sees this. Needed to create or join."
+                : "Everyone in the room sees this. Needed either way."
             }
             onChange={(e) => {
               setName(e.target.value);
@@ -140,50 +140,74 @@ export default function Home() {
         </div>
 
         <div>
-          <p className="catalogue-no mb-3">02 — Start or join a room</p>
+          <p className="catalogue-no mb-3">02 — Then pick one</p>
 
-          <Button
-            variant="primary"
-            onClick={create}
-            disabled={busy !== null}
-            className="w-full justify-center"
-          >
-            {busy === "create" ? "Creating…" : "Create a new room"}
-          </Button>
+          {/* The two routes are built from the same parts in the same order --
+              heading, one line of explanation, controls, button -- so that
+              "create" and "join" read as alternatives rather than a step and
+              an afterthought. */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
+            <section className="flex flex-1 flex-col rounded-sm border border-wall-500 bg-wall-900/60 p-4">
+              <h2 className="font-display text-xl leading-tight text-label-100">
+                Start a new room
+              </h2>
+              <p className="mt-1.5 text-xs text-label-500">
+                You get a code to read out. Everyone else joins with it.
+              </p>
+              <Button
+                variant="primary"
+                onClick={create}
+                disabled={busy !== null}
+                className="mt-4 w-full justify-center sm:mt-auto"
+              >
+                {busy === "create" ? "Creating…" : "Create a new room"}
+              </Button>
+            </section>
 
-          <div className="my-5 flex items-center gap-3" aria-hidden>
-            <span className="h-px flex-1 bg-wall-500" />
-            <span className="label-caps">or join one</span>
-            <span className="h-px flex-1 bg-wall-500" />
-          </div>
-
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-            <div className="flex-1">
-              <Field
-                label="Room code"
-                mono
-                value={code}
-                maxLength={CODE_LENGTH}
-                placeholder="ABC234"
-                error={codeError}
-                hint={`${CODE_LENGTH} characters, from the host.`}
-                onChange={(e) => {
-                  // Strip anything outside the code alphabet as it is typed,
-                  // so an O or a zero never becomes a puzzling failure later.
-                  setCode(e.target.value.toUpperCase().replace(CODE_ALPHABET, ""));
-                  if (codeError) setCodeError(null);
-                }}
-                onKeyDown={(e) => e.key === "Enter" && join()}
-              />
-            </div>
-            <Button
-              variant="secondary"
-              onClick={join}
-              disabled={busy !== null}
-              className="sm:mt-6"
+            <div
+              className="flex items-center gap-3 sm:w-px sm:flex-col sm:gap-2 sm:self-stretch"
+              aria-hidden
             >
-              {busy === "join" ? "Joining…" : "Join room"}
-            </Button>
+              <span className="h-px flex-1 bg-wall-500 sm:h-auto sm:w-px sm:flex-1" />
+              <span className="label-caps">or</span>
+              <span className="h-px flex-1 bg-wall-500 sm:h-auto sm:w-px sm:flex-1" />
+            </div>
+
+            <section className="flex flex-1 flex-col rounded-sm border border-wall-500 bg-wall-900/60 p-4">
+              <h2 className="font-display text-xl leading-tight text-label-100">
+                Join a room
+              </h2>
+              <p className="mt-1.5 text-xs text-label-500">
+                Someone already made one and gave you its code.
+              </p>
+              <div className="mt-4">
+                <Field
+                  label="Room code"
+                  mono
+                  required
+                  value={code}
+                  maxLength={CODE_LENGTH}
+                  placeholder="ABC234"
+                  error={codeError}
+                  hint={`${CODE_LENGTH} characters, from the host.`}
+                  onChange={(e) => {
+                    // Strip anything outside the code alphabet as it is typed,
+                    // so an O or a zero never becomes a puzzling failure later.
+                    setCode(e.target.value.toUpperCase().replace(CODE_ALPHABET, ""));
+                    if (codeError) setCodeError(null);
+                  }}
+                  onKeyDown={(e) => e.key === "Enter" && join()}
+                />
+              </div>
+              <Button
+                variant="secondary"
+                onClick={join}
+                disabled={busy !== null}
+                className="mt-3 w-full justify-center"
+              >
+                {busy === "join" ? "Joining…" : "Join room"}
+              </Button>
+            </section>
           </div>
         </div>
 
