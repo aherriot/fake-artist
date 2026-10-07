@@ -13,6 +13,18 @@ export const MAX_PLAYERS = 10;
 /** Two passes around the table: everyone draws twice. */
 export const PASSES = 2;
 
+/**
+ * Round payouts. **[ours]**
+ *
+ * Getting away with it is worth double. The Fake Artist wins alone against a
+ * room that is all looking for them; the real artists win together, and each
+ * of them collects for a catch that only had to be made once. Paying both the
+ * same rated the hardest thing a player can do in this game at the same price
+ * as being one of five people who agreed.
+ */
+export const FAKE_ARTIST_WIN_POINTS = 2;
+export const ARTIST_WIN_POINTS = 1;
+
 export type GameStatus = "lobby" | "active" | "complete";
 
 /**

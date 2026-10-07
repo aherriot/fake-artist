@@ -119,9 +119,23 @@ would undo it on a coin flip. "Not convinced" is a rejection.
 
 ## Scoring **[ours]**
 
-**1 point to each winner of the round.** The Fake Artist scores when they win;
-every real artist scores when they win. No weighting, no points for
-individually correct votes.
+**2 points to a winning Fake Artist, 1 to each winning real artist.** No other
+weighting, and no points for individually correct votes.
+
+Getting away with it is worth double because it is the harder half of the game
+and it pays out to one person. The Fake Artist plays alone against a room that
+is entirely occupied with finding them; the real artists win together, and each
+of them collects for a catch that only had to be made once. A flat point rated
+the hardest thing a player can do here at the same price as being one of five
+people who agreed.
+
+It also gives a match somewhere to go. A player who fakes once and survives it
+is two points up on a field where everyone else is grinding out ones, so the
+round where somebody bluffs it out is the round that decides the evening —
+which is the round everyone remembers anyway.
+
+The reveal shows the delta beside each running total, because a score that
+jumps by two with nothing saying why reads as a bug rather than a rule.
 
 ## Match structure
 

@@ -419,6 +419,16 @@ await test("a complete round reaches a reveal and scores someone", async () => {
   const total = Object.values(st.scores).reduce((a, b) => a + b, 0);
   assert.ok(total > 0, "somebody scored");
   assert.strictEqual(st.fakeHistory.length, 1, "the fake artist is recorded at reveal");
+
+  // The payout asymmetry, end to end: whichever way the round fell, a winning
+  // fake artist banked 2 and each winning real artist banked 1.
+  const res = st.results[0];
+  for (const [id, score] of Object.entries(st.scores)) {
+    const won = res.winners.includes(id);
+    const expected = won ? (id === res.fakeArtistId ? 2 : 1) : 0;
+    assert.strictEqual(score, expected,
+      `${id} scored ${score}, expected ${expected} (winners: ${res.winners.join()})`);
+  }
 });
 
 await test("a tied vote opens a runoff and the runoff can actually be voted in", async () => {

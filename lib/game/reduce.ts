@@ -1,4 +1,6 @@
 import {
+  ARTIST_WIN_POINTS,
+  FAKE_ARTIST_WIN_POINTS,
   MIN_PLAYERS,
   initialGameState,
   currentDrawer,
@@ -200,6 +202,9 @@ export function tally(votes: Record<string, string>): {
  * The Fake Artist wins by evading the vote, by surviving a second tie, or by
  * being caught and then guessing correctly. The real artists win only by
  * catching them AND rejecting the guess.
+ *
+ * A winning Fake Artist takes double. See FAKE_ARTIST_WIN_POINTS for why the
+ * two sides are not paid the same.
  */
 export function settleRound(
   state: GameState,
@@ -210,8 +215,18 @@ export function settleRound(
     ? [opts.fakeArtistId]
     : state.seatOrder.filter((id) => id !== opts.fakeArtistId);
   const scores = { ...state.scores };
-  for (const id of winners) scores[id] = (scores[id] ?? 0) + 1;
+  for (const id of winners) scores[id] = (scores[id] ?? 0) + roundPoints(id, opts.fakeArtistId);
   return { winners, scores };
+}
+
+/**
+ * What one winner collects. Losers never reach this -- `winners` is the gate.
+ *
+ * Exported because the reveal shows the delta beside the running total: a
+ * score that jumps by two with nothing saying why reads as a bug.
+ */
+export function roundPoints(winnerId: string, fakeArtistId: string): number {
+  return winnerId === fakeArtistId ? FAKE_ARTIST_WIN_POINTS : ARTIST_WIN_POINTS;
 }
 
 /**

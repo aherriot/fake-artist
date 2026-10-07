@@ -2,7 +2,7 @@
 // client-side, and the rules the server validates against.
 import assert from "node:assert";
 const {
-  reduce, reduceAll, tally, settleRound, guessAccepted,
+  reduce, reduceAll, tally, settleRound, guessAccepted, roundPoints,
   validateStroke, validateVote, validateAction,
 } = await import("../.test-build/game/reduce.js");
 const { initialGameState, normalizeGameState, currentDrawer, currentPass } =
@@ -92,7 +92,7 @@ v = reduce(v, {
   payload: {
     round: 1, fakeArtistId: C, topic: "Tomato", category: "Something red",
     votes: { c: A }, accusedId: null, caught: false, guess: null,
-    guessAccepted: null, winners: [C], scores: { a: 0, b: 0, c: 1 },
+    guessAccepted: null, winners: [C], scores: { a: 0, b: 0, c: 2 },
   },
 });
 assert.strictEqual(v.phase, "reveal");
@@ -119,24 +119,41 @@ inn = reduce(inn, {
   payload: {
     round: 1, fakeArtistId: C, topic: "Tomato", category: "Something red",
     votes: { a: B, c: B }, accusedId: B, caught: false, guess: null,
-    guessAccepted: null, winners: [C], scores: { a: 0, b: 0, c: 1 },
+    guessAccepted: null, winners: [C], scores: { a: 0, b: 0, c: 2 },
   },
 });
 assert.strictEqual(inn.phase, "reveal");
-assert.strictEqual(inn.scores[C], 1, "the fake artist scores when an innocent is accused");
+assert.strictEqual(inn.scores[C], 2, "the fake artist takes 2 when an innocent is accused");
 ok("accusing an innocent ends the round and the fake escapes");
 
 // --- scoring ----------------------------------------------------------------
+// Getting away with it pays double: the fake artist wins alone against a room
+// looking for them, where the artists win together off one shared catch.
 const base = { ...d, scores: { a: 0, b: 0, c: 0 } };
 let w = settleRound(base, { fakeArtistId: C, caught: false, guessAccepted: null });
 assert.deepStrictEqual(w.winners, [C]);
-assert.deepStrictEqual(w.scores, { a: 0, b: 0, c: 1 });
+assert.deepStrictEqual(w.scores, { a: 0, b: 0, c: 2 }, "evading the vote is worth 2");
 w = settleRound(base, { fakeArtistId: C, caught: true, guessAccepted: true });
 assert.deepStrictEqual(w.winners, [C], "caught but guessed right: fake still wins");
+assert.deepStrictEqual(w.scores, { a: 0, b: 0, c: 2 }, "guessing out of it is worth 2 as well");
 w = settleRound(base, { fakeArtistId: C, caught: true, guessAccepted: false });
 assert.deepStrictEqual(w.winners.sort(), [A, B], "caught and guess rejected: artists win");
-assert.deepStrictEqual(w.scores, { a: 1, b: 1, c: 0 });
-ok("all four win conditions score correctly");
+assert.deepStrictEqual(w.scores, { a: 1, b: 1, c: 0 }, "each artist takes 1, not 2");
+ok("all four win conditions score correctly, and faking it pays double");
+
+// The payout follows the ROLE, not the outcome: an artist never collects 2 for
+// a round somebody else faked, which is what a naive "winner takes 2" would do.
+assert.strictEqual(roundPoints(C, C), 2, "the fake artist's own win is worth 2");
+assert.strictEqual(roundPoints(A, C), 1, "a real artist's win is worth 1");
+
+// Scores accumulate across rounds rather than being recomputed, so the double
+// has to survive a second settlement on top of the first.
+const after = settleRound(
+  { ...d, scores: w.scores },
+  { fakeArtistId: A, caught: false, guessAccepted: null },
+);
+assert.deepStrictEqual(after.scores, { a: 3, b: 1, c: 0 }, "1 from catching, then 2 from faking");
+ok("the double stacks on a running total instead of replacing it");
 
 // --- judging the guess ------------------------------------------------------
 // A STRICT majority accepts, so an even split rejects and the real artists
@@ -167,7 +184,7 @@ ok("the two ties are settled in opposite directions, each favouring the room's w
 const result = {
   round: 1, fakeArtistId: C, topic: "Tomato", category: "Something red",
   votes: { a: C, b: C }, accusedId: C, caught: true, guess: "Tomato",
-  guessAccepted: true, winners: [C], scores: { a: 0, b: 0, c: 1 },
+  guessAccepted: true, winners: [C], scores: { a: 0, b: 0, c: 2 },
 };
 let rev = reduce(g, { seq: 80, type: "round_revealed", payload: result });
 assert.deepStrictEqual(rev.fakeHistory, [C], "fake recorded only at reveal");
@@ -179,7 +196,7 @@ assert.deepStrictEqual(revDup.fakeHistory, [C], "duplicate reveal does not doubl
 // The history is a log, not a set: the same player may fake again later.
 const later = reduce(rev, {
   seq: 81, type: "round_revealed",
-  payload: { ...result, round: 2, topic: "Kettle", scores: { a: 0, b: 0, c: 2 } },
+  payload: { ...result, round: 2, topic: "Kettle", scores: { a: 0, b: 0, c: 4 } },
 });
 assert.deepStrictEqual(later.fakeHistory, [C, C], "a repeat fake is recorded again");
 assert.strictEqual(revDup.results.length, 1);

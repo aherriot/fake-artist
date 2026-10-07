@@ -5,6 +5,7 @@ import type { useGameSync } from "@/lib/useGameSync";
 import { Button, Plaque, penTextVar } from "@/lib/ui/primitives";
 import { PlayerName } from "@/lib/ui/PlayerName";
 import { useAction } from "@/lib/ui/useAction";
+import { roundPoints } from "@/lib/game/reduce";
 import { clsx } from "clsx";
 
 type Game = ReturnType<typeof useGameSync>;
@@ -239,6 +240,10 @@ function RevealPanel({ game, act, isHost }: { game: Game; act: Act; isHost: bool
             {byVotes.map((p) => {
               const isFake = p.id === r.fakeArtistId;
               const received = counts[p.id]?.voters.length ?? 0;
+              // A winning fake artist takes 2 where everyone else takes 1, so
+              // the delta is shown: a total that jumps by two with nothing
+              // explaining it reads as a bug rather than a rule.
+              const gained = r.winners.includes(p.id) ? roundPoints(p.id, r.fakeArtistId) : 0;
               return (
                 <tr
                   key={p.id}
@@ -278,6 +283,18 @@ function RevealPanel({ game, act, isHost }: { game: Game; act: Act; isHost: bool
                     {received || "—"}
                   </td>
                   <td className="py-1.5 text-right catalogue-no">
+                    {gained > 0 && (
+                      <span
+                        className={clsx(
+                          "mr-2 text-xs",
+                          // One side scores per round, so the whole column
+                          // lands in the colour of whoever won it.
+                          fakeWon ? "text-accent-400" : "text-success",
+                        )}
+                      >
+                        +{gained}
+                      </span>
+                    )}
                     {state.scores[p.id] ?? 0}
                   </td>
                 </tr>

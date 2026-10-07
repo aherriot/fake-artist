@@ -31,7 +31,8 @@ When the last line lands the room votes, in secret, all at once. Accuse the
 wrong person — or fail to agree at all — and the Fake Artist walks. Catch them
 and they get one guess at the subject; guess right and they still win it.
 
-A point to each winner, one round per player, highest score takes the match.
+Winners score: 2 to a fake artist who got away with it, 1 to each real artist
+who caught them. One round per player, highest score takes the match.
 Full rules, including every choice the tabletop game leaves open to the table,
 are in [SPEC.md](SPEC.md).
 
