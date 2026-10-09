@@ -198,12 +198,23 @@ console.log("\n--- a full round ---");
 
 const stroke = () => ({ points: [[0.1, 0.1], [0.5, 0.6], [0.9, 0.2]] });
 
+/** Whose turn it is: round the seats from this round's first drawer,
+ *  skipping anyone dropped. Mirrors currentDrawer in lib/game/types.ts. */
+function drawerOf(s) {
+  const n = s.seatOrder.length;
+  for (let i = s.turnIndex; i < n * 2; i++) {
+    const id = s.seatOrder[((s.firstTurn ?? 0) + i) % n];
+    if (!s.absent.includes(id)) return id;
+  }
+  return null;
+}
+
 /** Everyone draws until the drawing phase ends. */
 async function drawAll(bs, code) {
   for (let guard = 0; guard < 60; guard++) {
     const s = (await bs[0].get(`/api/games/${code}/state`)).body.state;
     if (s.phase !== "drawing") return s;
-    const drawer = s.seatOrder[s.turnIndex % s.seatOrder.length];
+    const drawer = drawerOf(s);
     const who = bs.find(async () => true);
     // Find the browser whose player id is the current drawer.
     let actor = null;
@@ -292,7 +303,7 @@ await test("drawing follows seat order for two passes, then the vote opens itsel
 await test("a player cannot draw out of turn", async () => {
   const { bs, code } = await startedMatch();
   const s = (await bs[0].get(`/api/games/${code}/state`)).body.state;
-  const drawer = s.seatOrder[0];
+  const drawer = drawerOf(s);
   for (const b of bs) {
     const me = (await b.get(`/api/games/${code}/state`)).body;
     if (me.you !== drawer) {
@@ -307,7 +318,7 @@ await test("a player cannot draw out of turn", async () => {
 await test("a malformed stroke is rejected", async () => {
   const { bs, code } = await startedMatch();
   const s = (await bs[0].get(`/api/games/${code}/state`)).body.state;
-  const drawer = s.seatOrder[0];
+  const drawer = drawerOf(s);
   let actor = null;
   for (const b of bs) {
     const me = (await b.get(`/api/games/${code}/state`)).body;
@@ -643,6 +654,107 @@ await test("a dropped player is back in the next round", async () => {
   await host.post(`/api/games/${code}/action`, { type: "next_round" });
   const after = (await host.get(`/api/games/${code}/state`)).body.state;
   assert.deepStrictEqual(after.absent, [], "a new round starts with nobody dropped");
+});
+
+/** Four players, started, plus each one's id and role. */
+async function startedMatch4() {
+  const { a, b, c, code } = await lobby();
+  const d = browser();
+  await d.post(`/api/games/${code}/join`, { nickname: "Dev" });
+  const r = await a.post(`/api/games/${code}/action`, { type: "start_match" });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  const bs = [a, b, c, d];
+  const me = [];
+  for (const x of bs) me.push((await x.get(`/api/games/${code}/state`)).body);
+  return { bs, code, ids: me.map((m) => m.you), roles: me.map((m) => m.privateState.role) };
+}
+
+await test("drawing goes round the roster's order", async () => {
+  const { bs, code } = await startedMatch4();
+  const snap = (await bs[0].get(`/api/games/${code}/state`)).body;
+  assert.deepStrictEqual(
+    snap.state.seatOrder,
+    [...snap.players].sort((x, y) => x.seat - y.seat).map((p) => p.id),
+    "turn order is the order the roster lists players in",
+  );
+});
+
+await test("after a dropped player's turn, the next drawer draws once and passes it on", async () => {
+  const { bs, code, ids, roles } = await startedMatch4();
+  const host = bs[0];
+  // Someone the round can lose without being voided.
+  const gone = [1, 2, 3].find((i) => roles[i] !== "fake");
+  // Draw until it is their turn, then drop them.
+  for (let guard = 0; guard < 8; guard++) {
+    const s = (await host.get(`/api/games/${code}/state`)).body.state;
+    if (drawerOf(s) === ids[gone]) break;
+    await bs[ids.indexOf(drawerOf(s))].post(`/api/games/${code}/stroke`, stroke());
+  }
+  const drop = await host.post(`/api/games/${code}/action`, { type: "drop_player", playerId: ids[gone] });
+  assert.strictEqual(drop.status, 200, JSON.stringify(drop.body));
+
+  let s = (await host.get(`/api/games/${code}/state`)).body.state;
+  const next = drawerOf(s);
+  assert.notStrictEqual(next, ids[gone], "the dropped player is skipped");
+  const r = await bs[ids.indexOf(next)].post(`/api/games/${code}/stroke`, stroke());
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  s = (await host.get(`/api/games/${code}/state`)).body.state;
+  assert.notStrictEqual(drawerOf(s), next, "their turn ended when their line landed");
+  const again = await bs[ids.indexOf(next)].post(`/api/games/${code}/stroke`, stroke());
+  assert.strictEqual(again.status, 400, "and they cannot draw a second line in a row");
+
+  const end = await drawAll(bs, code);
+  assert.strictEqual(end.phase, "voting");
+  assert.strictEqual(end.strokes.length, 6, "three remaining players, two lines each");
+  assert.ok(!end.strokes.some((x) => x.playerId === ids[gone]), "nothing from the dropped player");
+});
+
+await test("a drop that ties the vote opens a runoff with every ballot cleared", async () => {
+  const { bs, code, ids, roles } = await startedMatch4();
+  await drawAll(bs, code);
+  const host = bs[0];
+  const gone = [1, 2, 3].find((i) => roles[i] !== "fake");
+  const voters = [0, 1, 2, 3].filter((i) => i !== gone);
+  // A three-way tie among the three who stay: each votes for the next.
+  for (let k = 0; k < 3; k++) {
+    const r = await bs[voters[k]].post(`/api/games/${code}/vote`, { targetId: ids[voters[(k + 1) % 3]] });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  }
+  const drop = await host.post(`/api/games/${code}/action`, { type: "drop_player", playerId: ids[gone] });
+  assert.strictEqual(drop.status, 200, JSON.stringify(drop.body));
+
+  const s = (await host.get(`/api/games/${code}/state`)).body.state;
+  assert.strictEqual(s.phase, "runoff", `expected a runoff, got ${s.phase}`);
+  assert.deepStrictEqual(s.voted, [], "nobody has voted in the runoff yet");
+  for (const i of voters) {
+    const me = (await bs[i].get(`/api/games/${code}/state`)).body;
+    assert.strictEqual(me.privateState.vote, null, "first-round ballots were cleared");
+  }
+  // One runoff vote must not resolve it on the strength of stale ballots.
+  const target = s.runoffCandidates.find((id) => id !== ids[voters[0]]);
+  await bs[voters[0]].post(`/api/games/${code}/vote`, { targetId: target });
+  const s2 = (await host.get(`/api/games/${code}/state`)).body.state;
+  assert.strictEqual(s2.phase, "runoff", "still waiting on the other two");
+  assert.strictEqual(s2.voted.length, 1);
+
+  const late = await bs[gone].post(`/api/games/${code}/vote`, { targetId: target });
+  assert.strictEqual(late.status, 400, "a dropped player cannot vote");
+});
+
+await test("the host cannot drop anyone between rounds", async () => {
+  const { bs, code, ids, roles } = await startedMatch4();
+  const host = bs[0];
+  const fake = roles.indexOf("fake");
+  await drawAll(bs, code);
+  // Drop the fake artist to get straight to a (voided) reveal.
+  await host.post(`/api/games/${code}/action`, { type: "drop_player", playerId: ids[fake] });
+  const s = (await host.get(`/api/games/${code}/state`)).body.state;
+  assert.strictEqual(s.phase, "reveal");
+  const other = ids.find((id, i) => i !== fake && i !== 0);
+  const r = await host.post(`/api/games/${code}/action`, { type: "drop_player", playerId: other });
+  assert.strictEqual(r.status, 400, "nothing is waiting on anyone at the reveal");
+  const after = (await host.get(`/api/games/${code}/state`)).body.state;
+  assert.strictEqual(after.results.length, 1, "no second reveal was logged");
 });
 
 await test("cannot join mid-round, but can join between rounds", async () => {

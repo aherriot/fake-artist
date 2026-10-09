@@ -25,6 +25,7 @@ export function StatusBoard({ sync, code }: { sync: SyncState; code: string }) {
     players: sync.players,
     privateState: sync.privateState,
     voted: sync.pending.voted,
+    drew: sync.pending.strokes.length > 0,
   });
   // Pusher can still be "live" while the API is unreachable -- they are
   // different services. Showing "live" beside a "can't reach the server"

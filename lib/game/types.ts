@@ -79,8 +79,12 @@ export interface GameState {
   phase: Phase;
   round: number;
   totalRounds: number;
-  /** Seat order, fixed for the match. Drawing follows it. */
+  /** Seat order, fixed for the match: the order players joined in, which is
+   *  also the order the roster lists them. Drawing goes round it. */
   seatOrder: string[];
+  /** Index into seatOrder of whoever draws first this round. Moves one seat
+   *  along each round, so the start rotates but the order never changes. */
+  firstTurn: number;
   /** Public from the moment the round starts. The Fake Artist sees it too. */
   category: string | null;
   /** 0..(seats * PASSES - 1). Whose turn is derived from this. */
@@ -132,6 +136,7 @@ export function initialGameState(): GameState {
     round: 0,
     totalRounds: 0,
     seatOrder: [],
+    firstTurn: 0,
     category: null,
     turnIndex: 0,
     strokes: [],
@@ -162,6 +167,7 @@ export function normalizeGameState(raw: Partial<GameState> | null | undefined): 
     round: typeof raw.round === "number" ? raw.round : base.round,
     totalRounds: typeof raw.totalRounds === "number" ? raw.totalRounds : base.totalRounds,
     seatOrder: arr(raw.seatOrder, base.seatOrder),
+    firstTurn: typeof raw.firstTurn === "number" ? raw.firstTurn : base.firstTurn,
     category: typeof raw.category === "string" ? raw.category : null,
     turnIndex: typeof raw.turnIndex === "number" ? raw.turnIndex : base.turnIndex,
     strokes: arr(raw.strokes, base.strokes),
@@ -201,7 +207,8 @@ export type GameEvent =
   | {
       seq: number;
       type: "round_started";
-      payload: { round: number; category: string };
+      /** `firstTurn` is absent from rounds logged before it existed; 0. */
+      payload: { round: number; category: string; firstTurn?: number };
     }
   | { seq: number; type: "stroke_drawn"; payload: Stroke }
   | { seq: number; type: "turn_skipped"; payload: { playerId: string } }
@@ -278,21 +285,34 @@ export interface Snapshot {
 /** Total drawing turns in a round. */
 export const turnsInRound = (seats: number) => seats * PASSES;
 
+/** Who holds drawing turn `i` of this round: round the table from firstTurn. */
+export function drawerAt(state: GameState, i: number): string {
+  const n = state.seatOrder.length;
+  return state.seatOrder[(((state.firstTurn + i) % n) + n) % n];
+}
+
 /**
- * Whose turn it is, or null if drawing is over.
+ * The turn being waited on, or null if drawing is over.
  *
  * A dropped player is skipped automatically, so the drawing does not stall on
- * someone the host has already removed from the round.
+ * someone the host has already removed from the round. Note this can be AHEAD
+ * of `turnIndex`: a line or a skip must advance past the turn it actually
+ * filled, not merely add one, or the next player would land back on their own
+ * turn after drawing.
  */
-export function currentDrawer(state: GameState): string | null {
+export function currentTurn(state: GameState): number | null {
   const n = state.seatOrder.length;
   const turns = turnsInRound(n);
-  if (n === 0) return null;
   for (let i = state.turnIndex; i < turns; i++) {
-    const id = state.seatOrder[i % n];
-    if (!state.absent.includes(id)) return id;
+    if (!state.absent.includes(drawerAt(state, i))) return i;
   }
   return null;
+}
+
+/** Whose turn it is, or null if drawing is over. */
+export function currentDrawer(state: GameState): string | null {
+  const i = currentTurn(state);
+  return i === null ? null : drawerAt(state, i);
 }
 
 /** True once every remaining player has taken all their turns. */
@@ -303,4 +323,7 @@ export const drawingFinished = (state: GameState) =>
 export const currentPass = (state: GameState) =>
   state.seatOrder.length === 0
     ? 1
-    : Math.min(PASSES, Math.floor(state.turnIndex / state.seatOrder.length) + 1);
+    : Math.min(
+        PASSES,
+        Math.floor((currentTurn(state) ?? state.turnIndex) / state.seatOrder.length) + 1,
+      );

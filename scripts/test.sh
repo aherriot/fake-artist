@@ -13,7 +13,7 @@ npx tsc \
   --rootDir lib --outDir .test-build \
   --module esnext --target es2022 --moduleResolution bundler
 # tsc keeps extensionless specifiers; Node's ESM resolver needs them explicit.
-sed -i '' 's|from "./types"|from "./types.js"|' .test-build/game/*.js
+sed -i '' -e 's|from "./types"|from "./types.js"|' -e 's|from "./reduce"|from "./reduce.js"|' .test-build/game/*.js
 # Mark only the compiled output as ESM; the app package stays CJS-default.
 echo '{"type":"module"}' > .test-build/package.json
 node test/reduce.test.mjs

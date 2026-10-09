@@ -15,12 +15,19 @@ import type { GameEvent, GameState, Stroke } from "./types";
 export interface Pending {
   chat: PendingChat[];
   /** Your own stroke, drawn locally the instant you submit it. */
-  strokes: Stroke[];
+  strokes: PendingStroke[];
   /** You cast a vote (the target stays secret from others; only the fact
    *  is public). */
   voted: boolean;
   /** Who you picked, so your own choice shows before the server confirms. */
   votedFor: string | null;
+}
+
+export interface PendingStroke extends Stroke {
+  /** How many of your lines were already confirmed when you sent this one.
+   *  It is confirmed once there are more -- counting alone cannot tell your
+   *  second line apart from the first one that landed a pass ago. */
+  confirmedBefore: number;
 }
 
 export interface PendingChat {
@@ -60,12 +67,12 @@ export function reconcile(
       .filter((n): n is string => typeof n === "string"),
   );
 
-  // A stroke of ours that has landed in public state retires one prediction.
+  // A stroke of ours that has landed in public state retires its prediction.
   const confirmedMine = you ? state.strokes.filter((s) => s.playerId === you).length : 0;
 
   return {
     chat: pending.chat.filter((c) => c.failed || !confirmedNonces.has(c.nonce)),
-    strokes: pending.strokes.slice(Math.min(confirmedMine, pending.strokes.length)),
+    strokes: pending.strokes.filter((s) => s.confirmedBefore >= confirmedMine),
     voted: pending.voted && !(you !== null && state.voted.includes(you)),
     // Kept until the round ends: it is the only record of your own choice
     // until the ballot is revealed, and the server never broadcasts it.

@@ -1,4 +1,5 @@
 import { currentDrawer, type GameState, type PlayerInfo, type PrivateState } from "./types";
+import { activePlayers } from "./reduce";
 
 /**
  * Whose move is it, and what is it?
@@ -60,14 +61,28 @@ export function turnStatus(args: {
   /** Optimistic: treat the viewer as already done, so the board does not
    *  flicker back to "your move" between the click and the confirmation. */
   voted?: boolean;
+  /** Optimistic: the viewer's line is on its way, so their turn is over. */
+  drew?: boolean;
 }): TurnStatus {
-  const { state, you, hostId, players, privateState } = args;
+  const { state, you, hostId, privateState } = args;
   const isHost = you !== null && you === hostId;
   const waitFor = (ids: string[], suffix: string): TurnStatus => ({
     yours: false,
     headline: ["Waiting for ", ...nameList(ids), suffix],
     waitingOn: ids,
   });
+  // Nothing in a round waits on a player the host has dropped, so no list of
+  // who is outstanding may name them -- and they must not be told to act.
+  const active = activePlayers(state);
+  const inRound = state.phase !== "lobby" && state.phase !== "reveal" && state.phase !== "complete";
+  if (inRound && you !== null && state.absent.includes(you)) {
+    return {
+      yours: false,
+      headline: ["You were dropped from this round"],
+      detail: "You will be dealt back in when the next round starts.",
+      waitingOn: [],
+    };
+  }
 
   switch (state.phase) {
     case "lobby":
@@ -77,6 +92,9 @@ export function turnStatus(args: {
 
     case "drawing": {
       const drawer = currentDrawer(state);
+      if (drawer && drawer === you && args.drew) {
+        return { yours: false, headline: ["Sending your line…"], waitingOn: [] };
+      }
       if (drawer && drawer === you) {
         return {
           yours: true,
@@ -91,7 +109,7 @@ export function turnStatus(args: {
     case "voting":
     case "runoff": {
       const done = args.voted || (you !== null && state.voted.includes(you));
-      const outstanding = players.filter((p) => !state.voted.includes(p.id)).map((p) => p.id);
+      const outstanding = active.filter((id) => !state.voted.includes(id));
       if (!done) {
         return {
           yours: true,
@@ -123,9 +141,9 @@ export function turnStatus(args: {
     }
 
     case "guess_vote": {
-      const outstanding = players
-        .filter((p) => p.id !== state.accusedId && !state.guessVoted.includes(p.id))
-        .map((p) => p.id);
+      const outstanding = active.filter(
+        (id) => id !== state.accusedId && !state.guessVoted.includes(id),
+      );
       if (privateState?.role === "fake") {
         return {
           yours: false,
@@ -138,7 +156,7 @@ export function turnStatus(args: {
         return {
           yours: true,
           headline: ["Does that guess count?"],
-          detail: "A tie counts as accepted.",
+          detail: "It counts if at least half of you accept it — a tie counts.",
           waitingOn: [],
         };
       }

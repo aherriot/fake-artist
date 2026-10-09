@@ -64,7 +64,7 @@ ok("host skip advances the turn without drawing");
 
 // A skipped LAST turn must open the vote just as a drawn one does.
 let skipAll = s;
-for (let i = 0; i < 6; i++) skipAll = reduce(skipAll, { seq: 200 + i, type: "turn_skipped", payload: { playerId: A } });
+for (let i = 0; i < 6; i++) skipAll = reduce(skipAll, { seq: 200 + i, type: "turn_skipped", payload: { playerId: currentDrawer(skipAll) } });
 assert.strictEqual(skipAll.phase, "voting", "skipping the final turn still opens the vote");
 ok("skipping the final turn opens the vote");
 
@@ -174,29 +174,26 @@ assert.deepStrictEqual(after.scores, { a: 3, b: 1, c: 0 }, "1 from catching, the
 ok("the double stacks on a running total instead of replacing it");
 
 // --- judging the guess ------------------------------------------------------
-// A STRICT majority accepts, so an even split rejects and the real artists
-// keep the round. The room has already picked the fake artist out by this
-// point; a ballot they could not agree on must not hand that back. [ours]
+// Half the judges is enough, so an even split accepts the guess. [ours]
 assert.strictEqual(guessAccepted(3, 4), true, "3 of 4 accepts");
-assert.strictEqual(guessAccepted(2, 4), false, "an even split is not a majority");
+assert.strictEqual(guessAccepted(2, 4), true, "an even split accepts");
 assert.strictEqual(guessAccepted(1, 4), false, "a minority rejects");
 assert.strictEqual(guessAccepted(2, 3), true, "2 of 3 accepts");
-assert.strictEqual(guessAccepted(1, 2), false, "one of two judges is a tie, so it rejects");
+assert.strictEqual(guessAccepted(1, 2), true, "one of two judges is a tie, so it accepts");
 assert.strictEqual(guessAccepted(2, 2), true, "unanimous accepts");
 assert.strictEqual(guessAccepted(0, 0), false, "no judges left cannot accept");
 assert.strictEqual(guessAccepted(1, 1), true, "a lone judge decides it");
-ok("a tied guess vote rejects, so being caught still costs the fake artist");
+ok("a tied guess vote accepts the guess");
 
-// The tie rules pull in opposite directions on purpose, and both favour
-// whoever did the work: a tied ACCUSATION means the room never agreed, so the
-// fake artist walks; a tied GUESS comes after the room already caught them.
+// Both ties now favour the fake artist: a tied ACCUSATION convicts nobody, and
+// a tied GUESS counts.
 const tiedVote = tally({ a: B, b: A });
 assert.strictEqual(tiedVote.accusedId, null, "a tied accusation convicts nobody");
 const tiedGuess = settleRound(base, {
   fakeArtistId: C, caught: true, guessAccepted: guessAccepted(1, 2),
 });
-assert.deepStrictEqual(tiedGuess.winners.sort(), [A, B], "a tied guess goes to the artists");
-ok("the two ties are settled in opposite directions, each favouring the room's work");
+assert.deepStrictEqual(tiedGuess.winners, [C], "a tied guess goes to the fake artist");
+ok("both ties are settled in the fake artist's favour");
 
 // --- reveal is the only place the fake becomes public -----------------------
 const result = {
@@ -312,13 +309,22 @@ assert.strictEqual(hasVoted(st2, emptyPending(), you), true, "confirmation shows
 ok("a voted prediction merges with its confirmation");
 
 // One confirmed stroke of ours retires exactly one prediction.
-const mine = { playerId: you, seat: 0, points: [[0,0],[1,1]] };
-let p3 = { ...emptyPending(), strokes: [mine, mine] };
+const mine = { playerId: you, seat: 0, points: [[0,0],[1,1]], confirmedBefore: 0 };
+const mine2 = { ...mine, confirmedBefore: 1 };
+let p3 = { ...emptyPending(), strokes: [mine, mine2] };
 const st3 = { ...initialGameState(), strokes: [{ ...mine }] };
 assert.strictEqual(reconcile(p3, st3, you, []).strokes.length, 1, "one confirmed retires one");
 assert.strictEqual(mergedStrokes(st3, p3).length, 3, "view shows confirmed + pending");
 const st4 = { ...initialGameState(), strokes: [{ ...mine }, { ...mine }, { playerId: "b", seat: 1, points: [] }] };
-assert.strictEqual(reconcile(p3, st4, you, []).strokes.length, 0, "others' strokes do not retire ours");
+assert.strictEqual(reconcile(p3, st4, you, []).strokes.length, 0, "both of ours confirmed");
+const st4b = { ...initialGameState(), strokes: [{ playerId: "b", seat: 1, points: [] }] };
+assert.strictEqual(reconcile({ ...emptyPending(), strokes: [mine] }, st4b, you, []).strokes.length, 1,
+  "others' strokes do not retire ours");
+// Second pass: your first line landed long ago. Your second, still in flight,
+// must stay on the canvas until it lands too -- not vanish on the next event.
+const secondPass = { ...emptyPending(), strokes: [mine2] };
+assert.strictEqual(reconcile(secondPass, st3, you, []).strokes.length, 1,
+  "an earlier confirmed line does not retire a later prediction");
 ok("stroke predictions retire one-for-one against your own confirmed strokes");
 
 // A new round invalidates per-round predictions but not chat.
@@ -629,6 +635,79 @@ assert.strictEqual(
   false, "nothing to drop from in the lobby");
 ok("dropping is host-only and needs a round in progress");
 
+
+// THE bug: B is dropped on their turn, so C draws in B's slot. C's line must
+// advance past the slot it filled -- not just +1, which landed C straight back
+// on their own turn and showed "your turn" after they had submitted.
+{
+  let r = { ...base2, phase: "drawing", turnIndex: 1, absent: ["b"], strokes: [] };
+  assert.strictEqual(currentDrawer(r), "c");
+  r = reduce(r, { seq: 500, type: "stroke_drawn", payload: { playerId: "c", seat: 2, points: [[0, 0], [1, 1]] } });
+  assert.strictEqual(currentDrawer(r), "a", "after C draws it is A's turn, not C's again");
+  r = reduce(r, { seq: 501, type: "stroke_drawn", payload: { playerId: "a", seat: 0, points: [[0, 0], [1, 1]] } });
+  assert.strictEqual(currentDrawer(r), "c", "B is skipped on the second pass too");
+  r = reduce(r, { seq: 502, type: "stroke_drawn", payload: { playerId: "c", seat: 2, points: [[0, 0], [1, 1]] } });
+  assert.strictEqual(r.phase, "voting", "and the vote opens after the last remaining line");
+  // A skip over a dropped player's slot behaves the same way.
+  let k2 = { ...base2, phase: "drawing", turnIndex: 1, absent: ["b"] };
+  k2 = reduce(k2, { seq: 503, type: "turn_skipped", payload: { playerId: "c" } });
+  assert.strictEqual(currentDrawer(k2), "a");
+  // A line from someone whose turn it is not is ignored.
+  const wrong = reduce({ ...base2, phase: "drawing", turnIndex: 0 },
+    { seq: 504, type: "stroke_drawn", payload: { playerId: "c", seat: 2, points: [[0, 0], [1, 1]] } });
+  assert.strictEqual(wrong.turnIndex, 0);
+  ok("a line drawn after a dropped player's turn hands the turn on");
+}
+
+// Turn order goes round the seat order -- the roster's order -- from a
+// starting seat that moves each round.
+{
+  const r2 = reduce({ ...base2, phase: "reveal" }, {
+    seq: 510, type: "round_started", payload: { round: 2, category: "x", firstTurn: 2 },
+  });
+  const order = [];
+  let t = r2;
+  for (let i = 0; i < 6; i++) {
+    order.push(currentDrawer(t));
+    t = reduce(t, { seq: 511 + i, type: "stroke_drawn", payload: { playerId: currentDrawer(t), seat: 0, points: [[0, 0], [1, 1]] } });
+  }
+  assert.deepStrictEqual(order, ["c", "a", "b", "c", "a", "b"], "starts at C, then follows the list");
+  const legacy = reduce({ ...base2, phase: "reveal", firstTurn: 2 }, {
+    seq: 520, type: "round_started", payload: { round: 2, category: "x" },
+  });
+  assert.strictEqual(currentDrawer(legacy), "a", "a round logged before firstTurn existed starts at seat 0");
+  ok("drawing follows the list from a rotating first seat");
+}
+
+// Nothing tells anyone they are waiting on a dropped player.
+{
+  const v = { ...base2, phase: "voting", voted: ["a"], absent: ["c"] };
+  assert.deepStrictEqual(ts(v, "a").waitingOn, ["b"], "the vote is not waiting on C");
+  const g2 = { ...base2, phase: "guess_vote", accusedId: "a", guessVoted: [], absent: ["c"] };
+  assert.deepStrictEqual(ts(g2, "a", { privateState: { role: "fake" } }).waitingOn, ["b"]);
+  const dv = ts(v, "c");
+  assert.strictEqual(dv.yours, false, "a dropped player is not asked to vote");
+  assert.match(headlineText(dv.headline, P), /dropped/);
+  assert.strictEqual(ts({ ...base2, phase: "drawing", turnIndex: 1, absent: ["c"] }, "b", { drew: true }).yours, false,
+    "a line in flight ends your turn on screen");
+  assert.match(ts(g2, "b", { privateState: { role: "artist" } }).detail, /a tie counts/,
+    "the guess tie rule says what guessAccepted does");
+  ok("status never waits on or prompts a dropped player");
+}
+
+// The server's half of the drop rules.
+{
+  const v = { ...base2, phase: "voting", absent: ["c"] };
+  assert.strictEqual(validateVote("a", { state: v, playerId: "c" }).ok, false, "a dropped player cannot vote");
+  assert.strictEqual(validateVote("a", { state: v, playerId: "b" }).ok, true);
+  const reveal = { state: { ...base2, phase: "reveal" }, status: "active", playerId: A, hostId: A, playerCount: 3 };
+  assert.strictEqual(validateAction({ type: "drop_player" }, reveal).ok, false,
+    "nothing to drop from between rounds");
+  const won = settleRound({ ...base2, absent: ["b"], votes: { a: "c" }, scores: { a: 0, b: 0, c: 0 } },
+    { fakeArtistId: "c", caught: true, guessAccepted: false });
+  assert.deepStrictEqual(won.winners, ["a"], "a dropped artist does not share the win");
+  ok("dropped players cannot vote, and do not score");
+}
 
 // --- joining late, and playing again ---------------------------------------
 const mid2 = { ...base2, phase: "reveal", seatOrder: ["a", "b", "c"], scores: { a: 1, b: 0, c: 0 } };

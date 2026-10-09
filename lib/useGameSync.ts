@@ -449,7 +449,8 @@ export function useGameSync(code: string) {
   const submitStroke = useCallback(
     (points: [number, number][]) => {
       const seat = sync.players.find((p) => p.id === sync.you)?.seat ?? 0;
-      const mine = { playerId: sync.you ?? "", seat, points };
+      const confirmedBefore = sync.state.strokes.filter((s0) => s0.playerId === sync.you).length;
+      const mine = { playerId: sync.you ?? "", seat, points, confirmedBefore };
       return optimisticPost(
         "/stroke",
         { points },
@@ -457,7 +458,7 @@ export function useGameSync(code: string) {
         (p) => ({ ...p, strokes: p.strokes.filter((s0) => s0 !== mine) }),
       );
     },
-    [optimisticPost, sync.you, sync.players],
+    [optimisticPost, sync.you, sync.players, sync.state.strokes],
   );
 
   /** Cast or change a vote. Changing is allowed until the ballot closes. */

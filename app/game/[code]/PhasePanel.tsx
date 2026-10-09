@@ -5,7 +5,8 @@ import type { useGameSync } from "@/lib/useGameSync";
 import { Button, Plaque, penTextVar } from "@/lib/ui/primitives";
 import { PlayerName } from "@/lib/ui/PlayerName";
 import { useAction } from "@/lib/ui/useAction";
-import { roundPoints } from "@/lib/game/reduce";
+import { activePlayers, roundPoints } from "@/lib/game/reduce";
+import { currentDrawer } from "@/lib/game/types";
 import { clsx } from "clsx";
 
 type Game = ReturnType<typeof useGameSync>;
@@ -44,9 +45,9 @@ export function PhasePanel({ game, act, isHost }: { game: Game; act: Act; isHost
 function DrawingPanel({ game, act, isHost }: { game: Game; act: Act; isHost: boolean }) {
   const { sync } = game;
   const skip = useAction(async () => act({ type: "skip_turn" }));
-  const seats = sync.state.seatOrder;
-  const drawer = seats[sync.state.turnIndex % Math.max(1, seats.length)];
-  if (drawer === sync.you || !isHost) return null;
+  // The same drawer everyone else sees: it skips dropped players.
+  const drawer = currentDrawer(sync.state);
+  if (!drawer || drawer === sync.you || !isHost) return null;
   return (
     <Plaque className="flex flex-wrap items-center justify-between gap-3">
       <div>
@@ -123,6 +124,10 @@ function GuessVotePanel({ game }: { game: Game }) {
     return null;
   });
   const done = sync.you !== null && sync.state.guessVoted.includes(sync.you);
+  const dropped = sync.you !== null && sync.state.absent.includes(sync.you);
+  // The accused never judges, and nobody waits on a dropped player.
+  const judges = activePlayers(sync.state).filter((id) => id !== sync.state.accusedId);
+  const judged = sync.state.guessVoted.filter((id) => judges.includes(id)).length;
 
   return (
     <Plaque>
@@ -131,6 +136,10 @@ function GuessVotePanel({ game }: { game: Game }) {
       {fake ? (
         <p className="mt-3 text-sm text-label-500">
           You do not get a say in whether your own guess counts.
+        </p>
+      ) : dropped ? (
+        <p className="mt-3 text-sm text-label-500">
+          You were dropped from this round, so the others are judging it.
         </p>
       ) : (
         <>
@@ -152,7 +161,7 @@ function GuessVotePanel({ game }: { game: Game }) {
           </div>
           {vote.error && <p role="alert" className="mt-3 text-sm text-danger">{vote.error}</p>}
           <p className="mt-3 text-xs text-label-500">
-            {sync.state.guessVoted.length} of {sync.players.length - 1} judged
+            {judged} of {judges.length} judged
           </p>
         </>
       )}

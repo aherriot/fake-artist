@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import type { Tx } from "./mutate";
 import { initPrivateState } from "./private";
 import { pickPair } from "./words";
-import { activePlayers, guessAccepted, settleRound, tally } from "./reduce";
+import { activePlayers, guessAccepted, reduce, settleRound, tally } from "./reduce";
 import type { DraftEvent, GameState, PrivateState, RoundResult } from "./types";
 import { pickFakeArtist, shuffle } from "./selection";
 
@@ -50,7 +50,13 @@ export async function openRound(
     })),
   );
 
-  return { type: "round_started", payload: { round, category: pair.category } };
+  // The first round starts at a random seat; each after it one seat along, so
+  // everyone gets a turn at going first and the order round the table -- the
+  // roster's order -- never changes.
+  const n = state.seatOrder.length;
+  const firstTurn = round === 1 ? Math.floor(rng() * n) : (state.firstTurn + 1) % n;
+
+  return { type: "round_started", payload: { round, category: pair.category, firstTurn } };
 }
 
 /** Read every player's private row for this game. */
@@ -156,17 +162,18 @@ export function afterVote(
 export async function clearVotes(
   tx: Tx,
   gameId: string,
-  exceptPlayerId: string,
+  exceptPlayerId: string | null,
 ): Promise<void> {
-  // The acting player is excluded on purpose. mutatePlayer writes their row
+  // The acting voter is excluded on purpose. mutatePlayer writes their row
   // itself, under a version guard read before produce() ran -- bumping the
   // version here would make that guard fail, and the retry would loop into a
-  // 409 rather than clearing anything.
+  // 409 rather than clearing anything. A host's drop has no such row: null.
   await tx.execute(sql`
     UPDATE player_state
        SET data = data || '{"vote":null}'::jsonb,
            version = version + 1, updated_at = now()
-     WHERE game_id = ${gameId}::uuid AND player_id <> ${exceptPlayerId}::uuid
+     WHERE game_id = ${gameId}::uuid
+       AND (${exceptPlayerId}::uuid IS NULL OR player_id <> ${exceptPlayerId}::uuid)
   `);
 }
 
@@ -252,7 +259,9 @@ export async function resolveIfComplete(
     const judges = rows.filter(
       (r) => r.data.role !== "fake" && active.includes(r.playerId),
     );
-    if (judges.length === 0 || judges.some((r) => r.data.guessVote === null)) return [];
+    // Nobody left to judge: afterDrop voids this case, but never wait on it.
+    if (judges.length === 0) return [voidRound(state, { fakeArtistId: fake?.playerId ?? "", topic })];
+    if (judges.some((r) => r.data.guessVote === null)) return [];
     const accepts = judges.filter((r) => r.data.guessVote === "accept").length;
     return [
       revealRound(state, {
@@ -273,8 +282,11 @@ export async function resolveIfComplete(
  *
  * Dropping the fake artist voids the round -- the game cannot continue without
  * the person everyone is trying to catch, and the host cannot avoid it because
- * they do not know who it is. Otherwise the round simply stops waiting on them,
- * which may be exactly what completes it.
+ * they do not know who it is. So does dropping the last real artist: there is
+ * nobody left to catch them, or to judge a guess. Otherwise the round simply
+ * stops waiting on them, which may be exactly what completes it.
+ *
+ * `state` is the round as it was BEFORE the drop.
  */
 export async function afterDrop(
   tx: Tx,
@@ -282,18 +294,29 @@ export async function afterDrop(
   state: GameState,
   droppedId: string,
 ): Promise<DraftEvent[]> {
+  // The same lock votes take, so a ballot landing at the same moment is either
+  // fully in the rows read below or waits until this drop has committed.
+  await tx.execute(sql`
+    SELECT pg_advisory_xact_lock(hashtextextended(
+      (SELECT code FROM games WHERE id = ${gameId}::uuid), 0))
+  `);
   const rows = await readPrivateRows(tx, gameId);
   const fake = rows.find((r) => r.data.role === "fake");
   const topic = rows.find((r) => r.data.role !== "fake")?.data.topic ?? "";
+  // The drop may also have closed the drawing (they were the last still to
+  // draw), which opens the ballot. Decide from the round as it is NOW, not as
+  // it was when the host clicked.
+  const now = reduce(state, { seq: 0, type: "player_dropped", payload: { playerId: droppedId } });
 
-  if (fake && fake.playerId === droppedId) {
-    return [voidRound(state, { fakeArtistId: droppedId, topic })];
+  if (!fake || fake.playerId === droppedId || activePlayers(now).every((id) => id === fake.playerId)) {
+    return [voidRound(now, { fakeArtistId: fake?.playerId ?? droppedId, topic })];
   }
-  // The accused cannot answer for themselves if they have gone.
-  if (state.phase === "guess" && state.accusedId === droppedId) {
-    return [voidRound(state, { fakeArtistId: fake?.playerId ?? "", topic })];
-  }
-  return resolveIfComplete(tx, gameId, state);
+
+  const events = await resolveIfComplete(tx, gameId, now);
+  // Exactly as when the last vote ties: a runoff needs every ballot cleared,
+  // or the first round's votes would decide it the moment anyone voted again.
+  if (events.some((e) => e.type === "voting_started")) await clearVotes(tx, gameId, null);
+  return events;
 }
 
 /** Clear per-round secrets so a stale vote cannot leak into the next round. */

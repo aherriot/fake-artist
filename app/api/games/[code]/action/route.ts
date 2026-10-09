@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { apiHandler, readJson } from "@/lib/api";
 import { getPlayerId } from "@/lib/session";
 import { mutate } from "@/lib/game/mutate";
-import { afterDrop, clearBallots, openRound, shuffle } from "@/lib/game/rounds";
+import { afterDrop, clearBallots, openRound } from "@/lib/game/rounds";
 import { broadcastAll } from "@/lib/pusher-server";
 import { validateAction } from "@/lib/game/reduce";
 import type { DraftEvent, GameAction } from "@/lib/game/types";
@@ -47,8 +47,10 @@ async function postHandler(req: Request, { params }: { params: Promise<{ code: s
     const events: DraftEvent[] = check.event ? [check.event] : [];
 
     if (action.type === "start_match") {
-      // Seat order is shuffled once and then fixed for the whole match.
-      const seatOrder = shuffle(ids);
+      // Seat order is the order people joined in, which is the order the
+      // roster lists them, so everyone can see when their turn is coming.
+      // Who starts is what varies -- see openRound.
+      const seatOrder = ids;
       events.push({
         type: "match_started",
         payload: { at: new Date().toISOString(), seatOrder, totalRounds: ids.length },
@@ -70,8 +72,7 @@ async function postHandler(req: Request, { params }: { params: Promise<{ code: s
       events.push({ type: "player_dropped", payload: { playerId: target } });
       // Dropping someone can be the thing that completes the phase -- that is
       // the whole point, since otherwise the round waits on them forever.
-      const after = { ...ctx.state, absent: [...ctx.state.absent, target] };
-      events.push(...(await afterDrop(tx, ctx.gameId, after, target)));
+      events.push(...(await afterDrop(tx, ctx.gameId, ctx.state, target)));
       return { ok: true as const, produced: { events } };
     }
 

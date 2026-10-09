@@ -15,8 +15,8 @@ export const dynamic = "force-dynamic";
  * POST /api/games/[code]/guess-vote -- do the real artists accept the guess?
  *
  * The Fake Artist is excluded: they win if it is accepted, so they do not get
- * to judge their own guess. A strict majority of the remaining players is
- * needed to accept, so an even split rejects -- see `guessAccepted`.
+ * to judge their own guess. Half of the remaining players is enough to
+ * accept, so an even split accepts -- see `guessAccepted`.
  *
  * The last ballot also reveals the round, which is the single place a topic
  * and a Fake Artist's identity enter the event log. By then both are public.
@@ -36,6 +36,8 @@ async function postHandler(req: Request, { params }: { params: Promise<{ code: s
       return { ok: false as const, error: "Not the guess vote" };
     if (priv.role === "fake")
       return { ok: false as const, error: "The fake artist cannot judge their own guess", code: 403 };
+    if (ctx.state.absent.includes(playerId))
+      return { ok: false as const, error: "You were dropped from this round — you are back in next round" };
     if (priv.guessVote !== null)
       return { ok: false as const, error: "You have already voted" };
 

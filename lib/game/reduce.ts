@@ -5,8 +5,8 @@ import {
   MIN_PLAYERS,
   initialGameState,
   currentDrawer,
+  currentTurn,
   drawingFinished,
-  turnsInRound,
   type DraftEvent,
   type GameEvent,
   type GameState,
@@ -51,6 +51,7 @@ export function reduce(state: GameState, event: GameEvent): GameState {
         phase: "drawing",
         round: event.payload.round,
         category: event.payload.category,
+        firstTurn: event.payload.firstTurn ?? 0,
         turnIndex: 0,
         strokes: [],
         voted: [],
@@ -63,13 +64,18 @@ export function reduce(state: GameState, event: GameEvent): GameState {
       };
 
     case "stroke_drawn": {
-      // Guard against a duplicate delivery advancing the turn twice.
-      const turns = turnsInRound(state.seatOrder.length);
-      if (state.turnIndex >= turns) return state;
+      // Guard against a duplicate delivery advancing the turn twice: a line
+      // only counts from the player whose turn it is.
+      const turn = currentTurn(state);
+      if (state.phase !== "drawing" || turn === null) return state;
+      if (currentDrawer(state) !== event.payload.playerId) return state;
+      // Past the turn this line FILLED, which is not always turnIndex: when a
+      // dropped player's turn was skipped over, adding one would land the
+      // next drawer back on their own turn.
       const next = {
         ...state,
         strokes: [...state.strokes, event.payload],
-        turnIndex: state.turnIndex + 1,
+        turnIndex: turn + 1,
       };
       // The last line opens the vote directly -- no separate discussion phase
       // and no Ready tally to shepherd everyone through.
@@ -77,9 +83,10 @@ export function reduce(state: GameState, event: GameEvent): GameState {
     }
 
     case "turn_skipped": {
-      const turns = turnsInRound(state.seatOrder.length);
-      if (state.turnIndex >= turns) return state;
-      const next = { ...state, turnIndex: state.turnIndex + 1 };
+      const turn = currentTurn(state);
+      if (state.phase !== "drawing" || turn === null) return state;
+      if (currentDrawer(state) !== event.payload.playerId) return state;
+      const next = { ...state, turnIndex: turn + 1 };
       return drawingFinished(next) ? openVote(next) : next;
     }
 
@@ -213,9 +220,11 @@ export function settleRound(
   opts: { fakeArtistId: string; caught: boolean; guessAccepted: boolean | null },
 ): { winners: string[]; scores: Record<string, number> } {
   const fakeWins = !opts.caught || opts.guessAccepted === true;
+  // A player dropped from the round was not in it at the end, so they do not
+  // share in a win they took no part in deciding.
   const winners = fakeWins
     ? [opts.fakeArtistId]
-    : state.seatOrder.filter((id) => id !== opts.fakeArtistId);
+    : activePlayers(state).filter((id) => id !== opts.fakeArtistId);
   const round = { winners, fakeArtistId: opts.fakeArtistId, votes: state.votes };
   const scores = { ...state.scores };
   for (const id of new Set([...winners, ...Object.keys(state.votes)])) {
@@ -253,18 +262,18 @@ export function roundPoints(
 /**
  * Does the room accept the fake artist's guess?
  *
- * A STRICT majority of the judges must accept, so an even split rejects. **[ours]**
+ * At least half of the judges must accept, so an even split accepts. **[ours]**
  *
- * The tie has to fall one way and this is the side that matches how the round
- * got here: the room has already picked the fake artist out, which is the hard
- * half of the game. Handing the round straight back on a vote the room could
- * not agree on would undo that on a coin flip. "Not convinced" is a rejection.
+ * The tie has to fall one way, and it falls to the guess: if half the room
+ * reads it as the subject, the fake artist has plausibly named it, and a
+ * close guess should not be lost on a technicality.
  *
  * The fake artist is never one of the judges -- they do not get to accept
  * their own guess -- so `judges` is the count of active real artists.
  */
 export function guessAccepted(accepts: number, judges: number): boolean {
-  return accepts * 2 > judges;
+  // With nobody left to judge there is no half to reach.
+  return judges > 0 && accepts * 2 >= judges;
 }
 
 /** Players the round still waits on: everyone the host has not dropped. */
@@ -314,7 +323,9 @@ export function validateAction(
     case "drop_player": {
       if (ctx.playerId !== ctx.hostId)
         return { ok: false, error: "Only the host can drop a player" };
-      if (ctx.state.phase === "lobby" || ctx.state.phase === "complete")
+      // Not at the reveal either: nothing waits on anyone there, and the next
+      // round deals everyone back in regardless.
+      if (ctx.state.phase === "lobby" || ctx.state.phase === "complete" || ctx.state.phase === "reveal")
         return { ok: false, error: "No round is in progress" };
       return { ok: true };
     }
@@ -379,6 +390,10 @@ export function validateVote(
   const { state } = ctx;
   if (state.phase !== "voting" && state.phase !== "runoff")
     return { ok: false, error: "Voting is not open" };
+  if (!state.seatOrder.includes(ctx.playerId))
+    return { ok: false, error: "You are not playing in this match" };
+  if (state.absent.includes(ctx.playerId))
+    return { ok: false, error: "You were dropped from this round — you are back in next round" };
   if (targetId === ctx.playerId) return { ok: false, error: "You cannot vote for yourself" };
   if (!state.seatOrder.includes(targetId))
     return { ok: false, error: "Not a player in this match" };

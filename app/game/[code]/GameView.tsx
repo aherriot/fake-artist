@@ -153,7 +153,8 @@ export default function GameView({ code }: { code: string }) {
             <Canvas
               strokes={state.strokes}
               pending={sync.pending.strokes}
-              canDraw={state.phase === "drawing" && yourTurn}
+              // Not while your line is in flight: the turn is already spent.
+              canDraw={state.phase === "drawing" && yourTurn && sync.pending.strokes.length === 0}
               yourSeat={yourSeat}
               onSubmit={g.submitStroke}
               highlightPlayerId={highlight}

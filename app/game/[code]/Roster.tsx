@@ -6,6 +6,9 @@ import type { useGameSync } from "@/lib/useGameSync";
 import { Plaque, penTextVar } from "@/lib/ui/primitives";
 import { useAction } from "@/lib/ui/useAction";
 import { hasVoted } from "@/lib/game/optimistic";
+import { activePlayers } from "@/lib/game/reduce";
+import { drawerAt } from "@/lib/game/types";
+import { PlayerName } from "@/lib/ui/PlayerName";
 
 /**
  * The players — and, while the ballot is open, the ballot itself.
@@ -37,6 +40,20 @@ export function Roster({
 
   const balloting = state.phase === "voting" || state.phase === "runoff";
   const voted = hasVoted(state, sync.pending, sync.you);
+  const youDropped = sync.you !== null && state.absent.includes(sync.you);
+  const active = activePlayers(state);
+  const votedCount = state.voted.filter((id) => active.includes(id)).length;
+  const inRound = state.phase !== "lobby" && state.phase !== "reveal" && state.phase !== "complete";
+
+  // Listed in seat order -- the order the drawing goes round the table -- so
+  // "after Bob" on screen is "after Bob" in the game. Anyone not seated yet
+  // (between kickoff and their first round) follows.
+  const listed = [
+    ...state.seatOrder.flatMap((id) => sync.players.filter((p) => p.id === id)),
+    ...sync.players.filter((p) => !state.seatOrder.includes(p.id)),
+  ];
+  const startsFirst =
+    state.phase === "drawing" && state.seatOrder.length > 0 ? drawerAt(state, 0) : null;
   const revealing = state.phase === "reveal" || state.phase === "complete";
   const result = revealing ? state.results[state.results.length - 1] : null;
 
@@ -58,7 +75,7 @@ export function Roster({
   // Voting stays open to changes: nothing is revealed until every vote is in,
   // so a misclick should never decide the round.
   const canVoteFor = (id: string) =>
-    balloting && !cast.pending && id !== sync.you && candidates.includes(id);
+    balloting && !youDropped && !cast.pending && id !== sync.you && candidates.includes(id);
 
   return (
     <Plaque>
@@ -68,20 +85,23 @@ export function Roster({
 
       {balloting && (
         <p className="mb-3 text-sm text-label-500">
-          {voted
+          {youDropped
+            ? "You were dropped from this round, so you do not vote in it."
+            : voted
             ? "Tap someone else to change your vote — nothing is revealed until everyone has voted."
             : "Tap whoever drew like they were guessing. Not yourself."}
         </p>
       )}
 
       <ul className="space-y-1">
-        {sync.players.map((p) => {
+        {listed.map((p) => {
           const online = sync.online.has(p.id);
           const votable = canVoteFor(p.id);
           const picked = balloting && yourPick === p.id;
           const isFake = result?.fakeArtistId === p.id;
           const votes = tally.get(p.id) ?? 0;
-          const dimmed = balloting && !votable && !picked;
+          const dimmed =
+            (balloting && !votable && !picked) || (inRound && state.absent.includes(p.id));
 
           const row = (
             <>
@@ -198,7 +218,13 @@ export function Roster({
 
       {balloting && (
         <p className="mt-3 text-xs text-label-500">
-          {state.voted.length} of {sync.players.length} voted — all revealed together
+          {votedCount} of {active.length} voted — all revealed together
+        </p>
+      )}
+      {startsFirst && (
+        <p className="mt-3 text-xs text-label-500">
+          Drawing goes down this list, starting with{" "}
+          <PlayerName id={startsFirst} players={sync.players} bold={false} /> this round.
         </p>
       )}
       {!balloting && !revealing && state.phase !== "lobby" && (
