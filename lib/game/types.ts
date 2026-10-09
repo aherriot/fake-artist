@@ -24,6 +24,12 @@ export const PASSES = 2;
  */
 export const FAKE_ARTIST_WIN_POINTS = 2;
 export const ARTIST_WIN_POINTS = 1;
+/**
+ * A real artist who voted for the Fake Artist in a round the Fake Artist won
+ * anyway. The room lost, but they read the drawing right, and that should not
+ * score the same as accusing an innocent. **[ours]**
+ */
+export const CORRECT_VOTE_POINTS = 1;
 
 export type GameStatus = "lobby" | "active" | "complete";
 

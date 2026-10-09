@@ -256,7 +256,7 @@ export default function DesignSystem() {
         <Tabs
           tabs={[
             { label: "Rules", content: "Draw one continuous line on your turn. Two passes." },
-            { label: "Scoring", content: "Two points for faking it, one for catching them." },
+            { label: "Scoring", content: "Two points for faking it, one for catching them or voting for them." },
             { label: "History", content: "Round 1 — the fake artist escaped." },
           ]}
         />

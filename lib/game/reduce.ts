@@ -1,5 +1,6 @@
 import {
   ARTIST_WIN_POINTS,
+  CORRECT_VOTE_POINTS,
   FAKE_ARTIST_WIN_POINTS,
   MIN_PLAYERS,
   initialGameState,
@@ -204,7 +205,8 @@ export function tally(votes: Record<string, string>): {
  * catching them AND rejecting the guess.
  *
  * A winning Fake Artist takes double. See FAKE_ARTIST_WIN_POINTS for why the
- * two sides are not paid the same.
+ * two sides are not paid the same. When the Fake Artist wins, any real artist
+ * who voted for them on the deciding ballot still takes CORRECT_VOTE_POINTS.
  */
 export function settleRound(
   state: GameState,
@@ -214,19 +216,38 @@ export function settleRound(
   const winners = fakeWins
     ? [opts.fakeArtistId]
     : state.seatOrder.filter((id) => id !== opts.fakeArtistId);
+  const round = { winners, fakeArtistId: opts.fakeArtistId, votes: state.votes };
   const scores = { ...state.scores };
-  for (const id of winners) scores[id] = (scores[id] ?? 0) + roundPoints(id, opts.fakeArtistId);
+  for (const id of new Set([...winners, ...Object.keys(state.votes)])) {
+    const gained = roundPoints(id, round);
+    if (gained > 0) scores[id] = (scores[id] ?? 0) + gained;
+  }
   return { winners, scores };
 }
 
 /**
- * What one winner collects. Losers never reach this -- `winners` is the gate.
+ * What one player collects from a round.
+ *
+ * Winners are paid by role. A loser scores only as a real artist who named the
+ * Fake Artist in a round the Fake Artist won anyway -- when the artists win,
+ * their correct votes are already paid for by the win itself.
  *
  * Exported because the reveal shows the delta beside the running total: a
- * score that jumps by two with nothing saying why reads as a bug.
+ * score that jumps with nothing saying why reads as a bug. Callers must skip
+ * voided rounds, which pay nobody.
  */
-export function roundPoints(winnerId: string, fakeArtistId: string): number {
-  return winnerId === fakeArtistId ? FAKE_ARTIST_WIN_POINTS : ARTIST_WIN_POINTS;
+export function roundPoints(
+  playerId: string,
+  r: Pick<RoundResult, "winners" | "fakeArtistId" | "votes">,
+): number {
+  if (r.winners.includes(playerId)) {
+    return playerId === r.fakeArtistId ? FAKE_ARTIST_WIN_POINTS : ARTIST_WIN_POINTS;
+  }
+  const fakeWon = r.winners.includes(r.fakeArtistId);
+  if (fakeWon && playerId !== r.fakeArtistId && r.votes[playerId] === r.fakeArtistId) {
+    return CORRECT_VOTE_POINTS;
+  }
+  return 0;
 }
 
 /**

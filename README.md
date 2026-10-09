@@ -32,7 +32,8 @@ wrong person — or fail to agree at all — and the Fake Artist walks. Catch th
 and they get one guess at the subject; guess right and they still win it.
 
 Winners score: 2 to a fake artist who got away with it, 1 to each real artist
-who caught them. One round per player, highest score takes the match.
+who caught them — and if the fake artist wins anyway, 1 to each artist who
+voted for them. One round per player, highest score takes the match.
 Full rules, including every choice the tabletop game leaves open to the table,
 are in [SPEC.md](SPEC.md).
 

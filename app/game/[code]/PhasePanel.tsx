@@ -240,10 +240,10 @@ function RevealPanel({ game, act, isHost }: { game: Game; act: Act; isHost: bool
             {byVotes.map((p) => {
               const isFake = p.id === r.fakeArtistId;
               const received = counts[p.id]?.voters.length ?? 0;
-              // A winning fake artist takes 2 where everyone else takes 1, so
-              // the delta is shown: a total that jumps by two with nothing
-              // explaining it reads as a bug rather than a rule.
-              const gained = r.winners.includes(p.id) ? roundPoints(p.id, r.fakeArtistId) : 0;
+              // Payouts differ by role and by vote, so the delta is shown: a
+              // total that jumps with nothing explaining it reads as a bug
+              // rather than a rule.
+              const gained = r.voided ? 0 : roundPoints(p.id, r);
               return (
                 <tr
                   key={p.id}
@@ -287,9 +287,9 @@ function RevealPanel({ game, act, isHost }: { game: Game; act: Act; isHost: bool
                       <span
                         className={clsx(
                           "mr-2 text-xs",
-                          // One side scores per round, so the whole column
-                          // lands in the colour of whoever won it.
-                          fakeWon ? "text-accent-400" : "text-success",
+                          // The fake artist's points in their colour; any
+                          // artist's, for a win or a correct vote, in theirs.
+                          isFake ? "text-accent-400" : "text-success",
                         )}
                       >
                         +{gained}

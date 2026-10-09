@@ -420,12 +420,15 @@ await test("a complete round reaches a reveal and scores someone", async () => {
   assert.ok(total > 0, "somebody scored");
   assert.strictEqual(st.fakeHistory.length, 1, "the fake artist is recorded at reveal");
 
-  // The payout asymmetry, end to end: whichever way the round fell, a winning
-  // fake artist banked 2 and each winning real artist banked 1.
+  // The payouts, end to end: whichever way the round fell, a winning fake
+  // artist banked 2, each winning real artist 1, and when the fake artist won,
+  // each real artist who voted for them 1.
   const res = st.results[0];
+  const fakeWon = res.winners.includes(res.fakeArtistId);
   for (const [id, score] of Object.entries(st.scores)) {
     const won = res.winners.includes(id);
-    const expected = won ? (id === res.fakeArtistId ? 2 : 1) : 0;
+    const namedThem = fakeWon && id !== res.fakeArtistId && res.votes[id] === res.fakeArtistId;
+    const expected = won ? (id === res.fakeArtistId ? 2 : 1) : namedThem ? 1 : 0;
     assert.strictEqual(score, expected,
       `${id} scored ${score}, expected ${expected} (winners: ${res.winners.join()})`);
   }

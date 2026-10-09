@@ -143,8 +143,26 @@ ok("all four win conditions score correctly, and faking it pays double");
 
 // The payout follows the ROLE, not the outcome: an artist never collects 2 for
 // a round somebody else faked, which is what a naive "winner takes 2" would do.
-assert.strictEqual(roundPoints(C, C), 2, "the fake artist's own win is worth 2");
-assert.strictEqual(roundPoints(A, C), 1, "a real artist's win is worth 1");
+assert.strictEqual(roundPoints(C, { winners: [C], fakeArtistId: C, votes: {} }), 2,
+  "the fake artist's own win is worth 2");
+assert.strictEqual(roundPoints(A, { winners: [A, B], fakeArtistId: C, votes: {} }), 1,
+  "a real artist's win is worth 1");
+
+// A correct vote still pays 1 when the fake artist wins anyway, whether they
+// slipped the accusation or were caught and guessed out of it.
+const four = { ...d, seatOrder: [A, B, C, "d"], scores: { a: 0, b: 0, c: 0, d: 0 } };
+let cv = settleRound({ ...four, votes: { a: C, b: "d", d: B } },
+  { fakeArtistId: C, caught: false, guessAccepted: null });
+assert.deepStrictEqual(cv.winners, [C], "a correct vote does not make them a winner");
+assert.deepStrictEqual(cv.scores, { a: 1, b: 0, c: 2, d: 0 }, "only the artist who named them scores");
+cv = settleRound({ ...four, votes: { a: C, b: C, d: B } },
+  { fakeArtistId: C, caught: true, guessAccepted: true });
+assert.deepStrictEqual(cv.scores, { a: 1, b: 1, c: 2, d: 0 }, "caught, guessed right: the accusers score");
+// When the artists win, the win already pays everyone; a correct vote adds nothing.
+cv = settleRound({ ...four, votes: { a: C, b: C, d: B } },
+  { fakeArtistId: C, caught: true, guessAccepted: false });
+assert.deepStrictEqual(cv.scores, { a: 1, b: 1, c: 0, d: 1 }, "a win is 1, not 1 plus 1");
+ok("a correct vote pays 1 in a round the fake artist won, and nothing extra otherwise");
 
 // Scores accumulate across rounds rather than being recomputed, so the double
 // has to survive a second settlement on top of the first.

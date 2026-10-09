@@ -119,8 +119,16 @@ would undo it on a coin flip. "Not convinced" is a rejection.
 
 ## Scoring **[ours]**
 
-**2 points to a winning Fake Artist, 1 to each winning real artist.** No other
-weighting, and no points for individually correct votes.
+**2 points to a winning Fake Artist, 1 to each winning real artist.** When the
+Fake Artist wins, each real artist who voted for them on the deciding ballot
+(the runoff, if there was one) also takes **1 point**. Nothing else scores.
+
+A correct vote pays only when the room loses. When the real artists win, every
+one of them takes the point regardless of how they voted: the catch belongs to
+the room. When the Fake Artist wins, a player who named them was right where
+the room was wrong, and the point keeps that from scoring the same as accusing
+an innocent. It also covers the round where the room catches the Fake Artist
+and the guess still lands — everyone who pointed at them scores something.
 
 Getting away with it is worth double because it is the harder half of the game
 and it pays out to one person. The Fake Artist plays alone against a room that
