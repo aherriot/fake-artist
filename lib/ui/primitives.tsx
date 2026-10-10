@@ -16,6 +16,16 @@ export const penVar = (seat: number) => `var(--color-pen-${((seat - 1) % PEN_COU
 export const penTextVar = (seat: number) =>
   `var(--color-pen-${((seat - 1) % PEN_COUNT) + 1}-ui)`;
 
+/**
+ * Seat -> whether a digit sitting directly on penVar's ink needs light text.
+ * Those inks are tuned for contrast against paper, not against a digit on
+ * top of them; half of the ten are too dark for a dark digit to read, seat 8
+ * worst of all.
+ */
+const PEN_DIGIT_LIGHT = new Set([1, 7, 8, 9, 10]);
+export const penDigitClass = (seat: number) =>
+  PEN_DIGIT_LIGHT.has(((seat - 1) % PEN_COUNT) + 1) ? "text-label-100" : "text-wall-950";
+
 /* ------------------------------------------------------------------ Button */
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
@@ -156,7 +166,10 @@ export function PlayerChip({
     <span className={clsx("flex items-center gap-2", className)}>
       <span
         aria-hidden
-        className="grid size-5 shrink-0 place-items-center rounded-[2px] font-mono text-[10px] font-medium text-wall-950"
+        className={clsx(
+          "grid size-5 shrink-0 place-items-center rounded-[2px] font-mono text-[10px] font-medium",
+          penDigitClass(seat),
+        )}
         style={{ background: penVar(seat) }}
       >
         {seat}

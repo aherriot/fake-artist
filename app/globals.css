@@ -69,13 +69,17 @@
    * Seat 7 is olive rather than the obvious magenta. Magenta separates best
    * on paper but reads as the brand accent, and a pen that looks like "the
    * important action colour" actively misleads on a canvas.
+   *
+   * Seat 6 is shifted toward teal, off the Okabe-Ito sky-blue hue, which sits
+   * at the exact same hue as seat 1's blue (only lighter). Matches the split
+   * already applied to the -ui pair below.
    */
   --color-pen-1: #0072b2;   /* blue */
   --color-pen-2: #d55e00;   /* vermillion */
   --color-pen-3: #009e73;   /* bluish green */
   --color-pen-4: #c66a9d;   /* reddish purple, darkened */
   --color-pen-5: #b87f00;   /* orange, darkened */
-  --color-pen-6: #1b90d2;   /* sky blue, darkened */
+  --color-pen-6: #1d93a5;   /* sky blue, shifted toward teal to separate from seat 1 */
   --color-pen-7: #5f7d1f;   /* olive   (see note) */
   --color-pen-8: #2b2622;   /* ink */
   --color-pen-9: #6d4aa8;   /* violet  (extended) */
