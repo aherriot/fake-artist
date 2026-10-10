@@ -20,7 +20,17 @@ type Act = (body: unknown) => Promise<string | null | void>;
  * in the status board; what is left here is only what you can press, and what
  * happened when you pressed it.
  */
-export function PhasePanel({ game, act, isHost }: { game: Game; act: Act; isHost: boolean }) {
+export function PhasePanel({
+  game,
+  act,
+  isHost,
+  isSpectator = false,
+}: {
+  game: Game;
+  act: Act;
+  isHost: boolean;
+  isSpectator?: boolean;
+}) {
   switch (game.sync.state.phase) {
     case "drawing":
       return <DrawingPanel game={game} act={act} isHost={isHost} />;
@@ -31,7 +41,7 @@ export function PhasePanel({ game, act, isHost }: { game: Game; act: Act; isHost
     case "guess":
       return <GuessPanel game={game} />;
     case "guess_vote":
-      return <GuessVotePanel game={game} />;
+      return <GuessVotePanel game={game} isSpectator={isSpectator} />;
     case "reveal":
       return <RevealPanel game={game} act={act} isHost={isHost} />;
     case "complete":
@@ -109,7 +119,7 @@ function GuessPanel({ game }: { game: Game }) {
   );
 }
 
-function GuessVotePanel({ game }: { game: Game }) {
+function GuessVotePanel({ game, isSpectator }: { game: Game; isSpectator: boolean }) {
   const { sync } = game;
   const [choice, setChoice] = useState<boolean | null>(null);
   const fake = sync.privateState?.role === "fake";
@@ -133,7 +143,9 @@ function GuessVotePanel({ game }: { game: Game }) {
     <Plaque>
       <p className="label-caps">They guessed</p>
       <p className="mt-2 font-display text-3xl">&ldquo;{sync.state.guess}&rdquo;</p>
-      {fake ? (
+      {isSpectator ? (
+        <p className="mt-3 text-sm text-label-500">Waiting for the room to judge it…</p>
+      ) : fake ? (
         <p className="mt-3 text-sm text-label-500">
           You do not get a say in whether your own guess counts.
         </p>

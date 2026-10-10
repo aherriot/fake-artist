@@ -3,6 +3,7 @@ import {
   uuid,
   text,
   integer,
+  boolean,
   jsonb,
   timestamp,
   bigserial,
@@ -62,6 +63,32 @@ export const players = pgTable(
   ],
 );
 
+/**
+ * Someone who arrived mid-match. Not seated, not scored, nothing waits on
+ * them -- they just watch the live state. A row here moves to `players`
+ * (and is deleted from here) once the host approves them AND the next round
+ * starts; approval alone does not seat them, so a drawing already under way
+ * is never disturbed.
+ */
+export const spectators = pgTable(
+  "spectators",
+  {
+    id: uuid("id").notNull(),
+    gameId: uuid("game_id")
+      .notNull()
+      .references(() => games.id, { onDelete: "cascade" }),
+    nickname: text("nickname").notNull(),
+    approved: boolean("approved").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.gameId, t.id] }),
+    index("spectators_game_id_idx").on(t.gameId),
+  ],
+);
+
 export const events = pgTable(
   "events",
   {
@@ -115,3 +142,4 @@ export type GameRow = typeof games.$inferSelect;
 export type PlayerStateRow = typeof playerState.$inferSelect;
 export type PlayerRow = typeof players.$inferSelect;
 export type EventRow = typeof events.$inferSelect;
+export type SpectatorRow = typeof spectators.$inferSelect;

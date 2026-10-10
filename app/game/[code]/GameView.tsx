@@ -17,7 +17,7 @@ import { PhasePanel } from "./PhasePanel";
 /** Phases whose panel is the point of the screen, not an aside to it. */
 const RESOLVING = new Set(["guess", "guess_vote", "reveal", "complete"]);
 
-export default function GameView({ code }: { code: string }) {
+export default function GameView({ code, isSpectator = false }: { code: string; isSpectator?: boolean }) {
   const g = useGameSync(code.toUpperCase());
   const { sync } = g;
   const [highlight, setHighlight] = useState<string | null>(null);
@@ -95,6 +95,15 @@ export default function GameView({ code }: { code: string }) {
         <StatusBoard sync={sync} code={code.toUpperCase()} />
       </div>
 
+      {isSpectator && (
+        <Plaque className="mb-6 border-accent-500/50">
+          <p className="text-sm text-label-300">
+            You&rsquo;re watching this match. Ask the host to add you — you&rsquo;ll play
+            starting next round.
+          </p>
+        </Plaque>
+      )}
+
       <div
         className={clsx(
           "flex flex-col gap-6",
@@ -114,7 +123,7 @@ export default function GameView({ code }: { code: string }) {
               canvas. Turn-by-turn prompts stay below, out of the way. */}
           {RESOLVING.has(state.phase) && (
             <div className="mb-6">
-              <PhasePanel game={g} act={act} isHost={isHost} />
+              <PhasePanel game={g} act={act} isHost={isHost} isSpectator={isSpectator} />
             </div>
           )}
           {state.phase === "lobby" ? (
@@ -182,6 +191,7 @@ export default function GameView({ code }: { code: string }) {
             onHighlight={setHighlight}
             highlight={highlight}
             isHost={isHost}
+            isSpectator={isSpectator}
           />
         </div>
 
@@ -192,7 +202,7 @@ export default function GameView({ code }: { code: string }) {
 
       {state.phase !== "lobby" && !RESOLVING.has(state.phase) && (
         <div className="mt-6">
-          <PhasePanel game={g} act={act} isHost={isHost} />
+          <PhasePanel game={g} act={act} isHost={isHost} isSpectator={isSpectator} />
         </div>
       )}
 

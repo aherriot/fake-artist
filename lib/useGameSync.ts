@@ -19,6 +19,7 @@ import {
   type GameStatus,
   type PlayerInfo,
   type PrivateState,
+  type SpectatorInfo,
   normalizeGameState,
   type Snapshot,
 } from "./game/types";
@@ -29,6 +30,8 @@ export interface SyncState {
   status: GameStatus;
   state: GameState;
   players: PlayerInfo[];
+  /** Watching, not seated. See `SpectatorInfo`. */
+  spectators: SpectatorInfo[];
   chat: Extract<GameEvent, { type: "chat" }>["payload"][];
   lastSeq: number;
   hostId: string | null;
@@ -52,6 +55,7 @@ const EMPTY: SyncState = {
   status: "lobby",
   state: initialGameState(),
   players: [],
+  spectators: [],
   chat: [],
   lastSeq: 0,
   hostId: null,
@@ -105,6 +109,16 @@ export function useGameSync(code: string) {
         next.players = prev.players.some((p) => p.id === ev.payload.id)
           ? prev.players
           : [...prev.players, ev.payload].sort((a, b) => a.seat - b.seat);
+        // Just seated for the round starting now -- no longer watching.
+        next.spectators = prev.spectators.filter((s) => s.id !== ev.payload.id);
+      } else if (ev.type === "spectator_joined") {
+        next.spectators = prev.spectators.some((s) => s.id === ev.payload.id)
+          ? prev.spectators
+          : [...prev.spectators, { ...ev.payload, approved: false }];
+      } else if (ev.type === "spectator_approved") {
+        next.spectators = prev.spectators.map((s) =>
+          s.id === ev.payload.id ? { ...s, approved: true } : s,
+        );
       } else if (ev.type === "chat") {
         next.chat = [...prev.chat, ev.payload];
       } else if (ev.type === "match_started") {
@@ -239,6 +253,7 @@ export function useGameSync(code: string) {
       status: snap.status,
       state: normalizeGameState(snap.state),
       players: snap.players,
+      spectators: snap.spectators,
       lastSeq: snap.lastSeq,
       hostId: snap.hostId,
       you: snap.you,
@@ -489,6 +504,19 @@ export function useGameSync(code: string) {
     [code],
   );
 
+  /** Host only: seat a spectator starting next round. */
+  const approveSpectator = useCallback(
+    async (playerId: string) => {
+      const res = await fetchJson(`/api/games/${code}/action`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type: "approve_spectator", playerId }),
+      });
+      return res.ok ? null : res.error;
+    },
+    [code],
+  );
+
   const forceResync = useCallback(() => {
     lastSeqRef.current = 0;
     readyRef.current = false;
@@ -512,6 +540,7 @@ export function useGameSync(code: string) {
     discardChat,
     submitStroke,
     dropPlayer,
+    approveSpectator,
     castVote,
   } as const;
 }

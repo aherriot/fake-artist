@@ -12,6 +12,8 @@ import type { Snapshot } from "@/lib/game/types";
 type Gate =
   | { kind: "checking" }
   | { kind: "member" }
+  /** Watching the current match, not seated in it -- see `SpectatorInfo`. */
+  | { kind: "spectator" }
   | { kind: "stranger"; status: Snapshot["status"]; phase: string; players: number }
   | { kind: "missing" }
   | { kind: "error"; message: string; requestId?: string };
@@ -67,6 +69,8 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
     setGate(
       res.data.isPlayer
         ? { kind: "member" }
+        : res.data.isSpectator
+        ? { kind: "spectator" }
         : {
             kind: "stranger",
             status: res.data.status,
@@ -103,7 +107,10 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       return;
     }
     saveNickname(nickname);
-    setGate({ kind: "member" });
+    // A round in progress seats you as a spectator instead of a player --
+    // re-check rather than assume which one happened.
+    setGate({ kind: "checking" });
+    void check();
   }
 
   if (gate.kind === "checking") {
@@ -149,8 +156,10 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
   }
 
   if (gate.kind === "stranger") {
-    // A match in progress takes new players between rounds.
-    const closed = gate.status === "complete" || (gate.status !== "lobby" && gate.phase !== "reveal");
+    // A finished match is a dead end; a round in progress is not -- arriving
+    // mid-round just makes you a spectator instead of a player.
+    const finished = gate.status === "complete";
+    const midRound = gate.status !== "lobby" && gate.phase !== "reveal";
     return (
       <main className="mx-auto max-w-lg px-6 py-16">
         <Wordmark size="full" asLink={false} />
@@ -159,24 +168,13 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
           <p className="catalogue-no">You have been invited to</p>
           <p className="mt-1 font-mono text-3xl tracking-[0.3em]">{upper}</p>
 
-          {closed ? (
+          {finished ? (
             <>
-              <p className="mt-5 text-sm text-danger">
-                {gate.status === "complete"
-                  ? "This match has finished."
-                  : "A round is in progress."}
-              </p>
+              <p className="mt-5 text-sm text-danger">This match has finished.</p>
               <p className="mt-2 text-sm text-label-500">
-                {gate.status === "complete"
-                  ? "Ask the host to start another, or start your own room."
-                  : "You can join as soon as this round ends — try again in a moment."}
+                Ask the host to start another, or start your own room.
               </p>
               <div className="mt-5 flex gap-2">
-                {gate.status !== "complete" && (
-                  <Button variant="secondary" onClick={retry}>
-                    Check again
-                  </Button>
-                )}
                 <Button variant="primary" href="/">
                   Start a room
                 </Button>
@@ -187,6 +185,8 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
               <p className="mt-4 text-sm text-label-300">
                 {gate.status === "lobby"
                   ? `${gate.players} ${gate.players === 1 ? "player is" : "players are"} waiting.`
+                  : midRound
+                  ? `A round is in progress with ${gate.players} players. You can watch now — the host adds you to the match, and you'll play starting next round.`
                   : `A match is under way with ${gate.players} players — you'll join the next round.`}{" "}
                 Everyone draws one line of the same picture — except one of you, who has not
                 been told what it is.
@@ -219,7 +219,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
                 disabled={busy}
                 className="mt-4 w-full justify-center"
               >
-                {busy ? "Joining…" : "Join the room"}
+                {busy ? "Joining…" : midRound ? "Watch the game" : "Join the room"}
               </Button>
             </>
           )}
@@ -231,6 +231,8 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       </main>
     );
   }
+
+  if (gate.kind === "spectator") return <GameView code={upper} isSpectator />;
 
   return <GameView code={upper} />;
 }

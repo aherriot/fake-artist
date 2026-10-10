@@ -9,6 +9,7 @@ import type {
   PlayerInfo,
   PrivateState,
   Snapshot,
+  SpectatorInfo,
 } from "@/lib/game/types";
 import { normalizeGameState } from "@/lib/game/types";
 
@@ -48,10 +49,14 @@ async function getHandler(_req: Request, { params }: { params: Promise<{ code: s
   const game = rows.rows[0];
   if (!game) return NextResponse.json({ error: "Game not found" }, { status: 404 });
 
-  const [p, priv] = await Promise.all([
+  const [p, spec, priv] = await Promise.all([
     db.execute<{ id: string; nickname: string; seat: number }>(sql`
       SELECT id, nickname, seat FROM players
        WHERE game_id = ${game.id}::uuid ORDER BY seat ASC
+    `),
+    db.execute<{ id: string; nickname: string; approved: boolean }>(sql`
+      SELECT id, nickname, approved FROM spectators
+       WHERE game_id = ${game.id}::uuid ORDER BY created_at ASC
     `),
     // Scoped to this player by primary key -- secrecy enforced by the query.
     db.execute<{ data: PrivateState }>(sql`
@@ -67,9 +72,11 @@ async function getHandler(_req: Request, { params }: { params: Promise<{ code: s
     state: normalizeGameState(game.state),
     lastSeq: Number(game.last_seq ?? 0),
     players: p.rows as PlayerInfo[],
+    spectators: spec.rows as SpectatorInfo[],
     hostId: game.host_id,
     you: playerId,
     isPlayer: p.rows.some((r) => r.id === playerId),
+    isSpectator: spec.rows.some((r) => r.id === playerId),
     privateState: priv.rows[0]?.data ?? null,
   };
   return NextResponse.json(snapshot);

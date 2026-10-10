@@ -193,12 +193,25 @@ export interface PlayerInfo {
   seat: number;
 }
 
+/** Someone watching a match in progress -- not seated, not scored. */
+export interface SpectatorInfo {
+  id: string;
+  nickname: string;
+  /** Host has agreed to seat them; takes effect at the start of the next
+   *  round, not immediately. */
+  approved: boolean;
+}
+
 /**
  * The event log. Note what is ABSENT: no event carries the topic or the Fake
  * Artist's identity until `round_revealed`, when both are public anyway.
  */
 export type GameEvent =
   | { seq: number; type: "player_joined"; payload: PlayerInfo }
+  /** Arrived mid-match. Purely informational -- a spectator is never seated
+   *  or scored by this event; see `approve_spectator` and `next_round`. */
+  | { seq: number; type: "spectator_joined"; payload: { id: string; nickname: string } }
+  | { seq: number; type: "spectator_approved"; payload: { id: string } }
   | {
       seq: number;
       type: "match_started";
@@ -265,6 +278,7 @@ export type GameAction =
   | { type: "next_round" }
   | { type: "end_match" }
   | { type: "drop_player"; playerId: string }
+  | { type: "approve_spectator"; playerId: string }
   | { type: "play_again" };
 
 export interface Snapshot {
@@ -274,9 +288,12 @@ export interface Snapshot {
   state: GameState;
   lastSeq: number;
   players: PlayerInfo[];
+  spectators: SpectatorInfo[];
   hostId: string;
   you: string;
   isPlayer: boolean;
+  /** Watching, not seated -- see `SpectatorInfo`. */
+  isSpectator: boolean;
   privateState: PrivateState | null;
 }
 

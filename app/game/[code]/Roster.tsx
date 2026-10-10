@@ -25,18 +25,21 @@ export function Roster({
   onHighlight,
   highlight,
   isHost,
+  isSpectator = false,
 }: {
   game: ReturnType<typeof useGameSync>;
   drawer: string | null;
   onHighlight: (id: string | null) => void;
   highlight: string | null;
   isHost: boolean;
+  isSpectator?: boolean;
 }) {
   const { sync } = game;
   const { state } = sync;
   const [pendingId, setPendingId] = useState<string | null>(null);
   const cast = useAction(async (id: string) => game.castVote(id));
   const drop = useAction(async (id: string) => game.dropPlayer(id));
+  const approve = useAction(async (id: string) => game.approveSpectator(id));
 
   const balloting = state.phase === "voting" || state.phase === "runoff";
   const voted = hasVoted(state, sync.pending, sync.you);
@@ -75,7 +78,8 @@ export function Roster({
   // Voting stays open to changes: nothing is revealed until every vote is in,
   // so a misclick should never decide the round.
   const canVoteFor = (id: string) =>
-    balloting && !youDropped && !cast.pending && id !== sync.you && candidates.includes(id);
+    balloting && !isSpectator && !youDropped && !cast.pending && id !== sync.you &&
+    candidates.includes(id);
 
   return (
     <Plaque>
@@ -206,6 +210,36 @@ export function Roster({
           );
         })}
       </ul>
+
+      {sync.spectators.length > 0 && (
+        <div className="mt-4 border-t border-wall-600 pt-3">
+          <p className="label-caps mb-2 text-label-700">Watching</p>
+          <ul className="space-y-1.5">
+            {sync.spectators.map((s) => (
+              <li key={s.id} className="flex items-center gap-2 text-sm text-label-500">
+                <span className="truncate">{s.nickname}</span>
+                {s.id === sync.you && <span className="label-caps">You</span>}
+                <span className="ml-auto flex shrink-0 items-center gap-2 text-[11px]">
+                  {s.approved ? (
+                    <span className="label-caps text-accent-400">Joining next round</span>
+                  ) : isHost ? (
+                    <button
+                      onClick={() => approve.run(s.id)}
+                      disabled={approve.pending}
+                      className="label-caps text-accent-400 underline hover:text-accent-300"
+                    >
+                      Add to match
+                    </button>
+                  ) : null}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {approve.error && (
+            <p role="alert" className="mt-2 text-sm text-danger">{approve.error}</p>
+          )}
+        </div>
+      )}
 
       {(cast.error || drop.error) && (
         <p role="alert" className="mt-3 text-sm text-danger">{cast.error ?? drop.error}</p>

@@ -34,10 +34,16 @@ async function postHandler(req: Request) {
   if (!socketId || !match)
     return NextResponse.json({ error: "Bad request" }, { status: 400 });
 
-  const rows = await db.execute<{ nickname: string; seat: number }>(sql`
+  // A spectator has no seat, but is still entitled to watch the channel --
+  // that is the whole point of spectating.
+  const rows = await db.execute<{ nickname: string; seat: number | null }>(sql`
     SELECT p.nickname, p.seat
       FROM players p JOIN games g ON g.id = p.game_id
      WHERE g.code = ${match[1]} AND p.id = ${playerId}::uuid
+    UNION ALL
+    SELECT s.nickname, NULL AS seat
+      FROM spectators s JOIN games g ON g.id = s.game_id
+     WHERE g.code = ${match[1]} AND s.id = ${playerId}::uuid
   `);
   if (rows.rows.length === 0)
     return NextResponse.json({ error: "Not a member of this game" }, { status: 403 });

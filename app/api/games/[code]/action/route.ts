@@ -5,8 +5,8 @@ import { getPlayerId } from "@/lib/session";
 import { mutate } from "@/lib/game/mutate";
 import { afterDrop, clearBallots, openRound } from "@/lib/game/rounds";
 import { broadcastAll } from "@/lib/pusher-server";
-import { validateAction } from "@/lib/game/reduce";
-import type { DraftEvent, GameAction } from "@/lib/game/types";
+import { reduce, validateAction } from "@/lib/game/reduce";
+import { MAX_PLAYERS, type DraftEvent, type GameAction, type GameState } from "@/lib/game/types";
 
 // Next.js requires these to be literal exports in the route file itself --
 // re-exporting them from a shared module is silently ignored.
@@ -76,6 +76,25 @@ async function postHandler(req: Request, { params }: { params: Promise<{ code: s
       return { ok: true as const, produced: { events } };
     }
 
+    if (action.type === "approve_spectator") {
+      const target = action.playerId;
+      const spec = await tx.execute<{ approved: boolean }>(sql`
+        SELECT approved FROM spectators
+         WHERE game_id = ${ctx.gameId}::uuid AND id = ${target}::uuid
+      `);
+      if (spec.rows.length === 0)
+        return { ok: false as const, error: "Not a spectator in this game" };
+      if (spec.rows[0].approved)
+        return { ok: false as const, error: "Already approved" };
+
+      await tx.execute(sql`
+        UPDATE spectators SET approved = true
+         WHERE game_id = ${ctx.gameId}::uuid AND id = ${target}::uuid
+      `);
+      events.push({ type: "spectator_approved", payload: { id: target } });
+      return { ok: true as const, produced: { events } };
+    }
+
     if (action.type === "play_again") {
       // Same room, same code: nobody has to share a new link or re-join.
       events.push({ type: "match_reset", payload: { at: new Date().toISOString() } });
@@ -88,13 +107,47 @@ async function postHandler(req: Request, { params }: { params: Promise<{ code: s
     }
 
     if (action.type === "next_round") {
-      const next = ctx.state.round + 1;
-      if (next > ctx.state.totalRounds) {
+      // Spectators the host approved get a real seat now, right before the
+      // round they were promised starts -- never mid-round, so a drawing or
+      // ballot already under way is never disturbed.
+      let state: GameState = ctx.state;
+      const approved = await tx.execute<{ id: string; nickname: string }>(sql`
+        SELECT id, nickname FROM spectators
+         WHERE game_id = ${ctx.gameId}::uuid AND approved = true
+         ORDER BY created_at ASC
+      `);
+      if (approved.rows.length > 0) {
+        const seats = await tx.execute<{ next: number }>(sql`
+          SELECT COALESCE(MAX(seat), -1) + 1 AS next
+            FROM players WHERE game_id = ${ctx.gameId}::uuid
+        `);
+        let seat = Number(seats.rows[0].next);
+        for (const r of approved.rows) {
+          if (seat >= MAX_PLAYERS) break; // Full -- stays a spectator.
+          await tx.execute(sql`
+            INSERT INTO players (id, game_id, nickname, seat)
+            VALUES (${r.id}::uuid, ${ctx.gameId}::uuid, ${r.nickname}, ${seat})
+          `);
+          await tx.execute(sql`
+            DELETE FROM spectators WHERE game_id = ${ctx.gameId}::uuid AND id = ${r.id}::uuid
+          `);
+          const event: DraftEvent = {
+            type: "player_joined",
+            payload: { id: r.id, nickname: r.nickname, seat },
+          };
+          events.push(event);
+          state = reduce(state, { ...event, seq: 0 });
+          seat++;
+        }
+      }
+
+      const next = state.round + 1;
+      if (next > state.totalRounds) {
         events.push({ type: "match_ended", payload: { at: new Date().toISOString() } });
         return { ok: true as const, produced: { events, status: "complete" as const } };
       }
       await clearBallots(tx, ctx.gameId);
-      events.push(await openRound(tx, ctx.gameId, ctx.state, next));
+      events.push(await openRound(tx, ctx.gameId, state, next));
     }
 
     return { ok: true as const, produced: { events } };

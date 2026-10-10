@@ -36,6 +36,12 @@ export function reduce(state: GameState, event: GameEvent): GameState {
       return next;
     }
 
+    // Spectators live in their own table, not in GameState -- these events
+    // exist only so every client's roster updates live. See useGameSync.
+    case "spectator_joined":
+    case "spectator_approved":
+      return state;
+
     case "match_started":
       return {
         ...state,
@@ -335,6 +341,13 @@ export function validateAction(
         return { ok: false, error: "Only the host can start a new match" };
       if (ctx.state.phase !== "complete")
         return { ok: false, error: "The match is not over yet" };
+      return { ok: true };
+
+    // Existence/already-approved checks happen in the route, against a fresh
+    // read of the spectators table -- ActionCtx does not carry that list.
+    case "approve_spectator":
+      if (ctx.playerId !== ctx.hostId)
+        return { ok: false, error: "Only the host can add a spectator to the match" };
       return { ok: true };
 
     case "end_match":

@@ -35,16 +35,34 @@ async function postHandler(req: Request, { params }: { params: Promise<{ code: s
     `);
     if (existing.rows.length > 0) return { ok: false as const, error: "__already_joined__" };
 
-    // Between rounds is a safe moment to arrive: no drawing to interrupt, no
-    // ballot half-cast, and the next round deals everyone in from scratch.
+    const existingSpectator = await tx.execute<{ id: string }>(sql`
+      SELECT id FROM spectators
+       WHERE game_id = ${ctx.gameId}::uuid AND id = ${playerId}::uuid
+    `);
+    if (existingSpectator.rows.length > 0)
+      return { ok: false as const, error: "__already_spectating__" };
+
+    // Between rounds is a safe moment to arrive as a full player: no drawing
+    // to interrupt, no ballot half-cast, and the next round deals everyone in
+    // from scratch. Mid-round, arriving still gets you a live view -- just as
+    // a spectator, until the host adds you and the next round starts.
     const joinable = ctx.status === "lobby" || ctx.state.phase === "reveal";
     if (!joinable) {
+      if (ctx.status === "complete") {
+        return { ok: false as const, error: "This match has finished" };
+      }
+      await tx.execute(sql`
+        INSERT INTO spectators (id, game_id, nickname)
+        VALUES (${playerId}::uuid, ${ctx.gameId}::uuid, ${name})
+      `);
       return {
-        ok: false as const,
-        error:
-          ctx.status === "complete"
-            ? "This match has finished"
-            : "A round is in progress — you can join when it ends",
+        ok: true as const,
+        produced: {
+          events: [{
+            type: "spectator_joined" as const,
+            payload: { id: playerId, nickname: name },
+          }],
+        },
       };
     }
 
@@ -73,7 +91,7 @@ async function postHandler(req: Request, { params }: { params: Promise<{ code: s
 
   if (!result.ok) {
     // Idempotent rejoin: report success so the client just refetches.
-    if (result.error === "__already_joined__")
+    if (result.error === "__already_joined__" || result.error === "__already_spectating__")
       return NextResponse.json({ ok: true, rejoined: true, playerId });
     return NextResponse.json({ error: result.error }, { status: result.code });
   }
